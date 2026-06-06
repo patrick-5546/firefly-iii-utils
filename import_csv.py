@@ -1,19 +1,20 @@
 import argparse
+import io
 import json
 import os
 import re
-import sys
 from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
 
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIGS_DIR = REPO_ROOT / "configs"
+ACCOUNT_MAPPINGS_PATH = CONFIGS_DIR / "account_mappings.json"
 
 TEMPLATES: dict[str, Path] = {
-    "chase_fu": CONFIGS_DIR / "chase_fu.json",
+    "chase_cc": CONFIGS_DIR / "chase_cc.json",
 }
 
 
@@ -30,15 +31,80 @@ class _AccountResponse(BaseModel):
 
 
 class _ImporterTemplate(BaseModel):
-    default_account: int
+    default_account: int = Field(ge=1)
     custom_tag: str
     roles: list[str]
+
+
+class _CardAccount(BaseModel):
+    account_id: int = Field(ge=1)
+    abbreviation: str
+
+
+class _TemplateMapping(BaseModel):
+    filename_pattern: str
+    accounts: dict[str, _CardAccount]
+
+    @field_validator("filename_pattern")
+    @classmethod
+    def _must_have_capture_group(cls, value: str) -> str:
+        if re.compile(value).groups < 1:
+            raise ValueError("filename_pattern must contain at least one capture group")
+        return value
+
+
+_AccountMappingsAdapter: TypeAdapter[dict[str, _TemplateMapping]] = TypeAdapter(
+    dict[str, _TemplateMapping]
+)
+_TemplateDictAdapter: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
 
 
 class Args(BaseModel):
     csv_path: str
     template: str
     dry_run: bool
+
+
+def _load_account_mappings() -> dict[str, _TemplateMapping]:
+    return _AccountMappingsAdapter.validate_json(ACCOUNT_MAPPINGS_PATH.read_text(encoding="utf-8"))
+
+
+def _apply_template_overrides(
+    template: dict[str, object],
+    template_name: str,
+    csv_path: Path,
+    mappings: dict[str, _TemplateMapping],
+    parser: argparse.ArgumentParser,
+) -> str | None:
+    """Apply mapping overrides to ``template`` in place.
+
+    Returns a short human-readable description of the rule that matched,
+    or ``None`` if no mapping is configured for this template.
+    """
+    mapping = mappings.get(template_name)
+    if mapping is None:
+        return None
+    match = re.search(mapping.filename_pattern, csv_path.name)
+    if match is None:
+        parser.error(
+            f"CSV filename {csv_path.name!r} does not match the filename_pattern "
+            + f"{mapping.filename_pattern!r} configured for template "
+            + f"{template_name!r} in configs/account_mappings.json"
+        )
+    key = match.group(1)
+    account = mapping.accounts.get(key)
+    if account is None:
+        known = ", ".join(sorted(mapping.accounts)) or "<none>"
+        parser.error(
+            f"CSV filename matched {key!r} but template {template_name!r} has no entry "
+            + f"for that key in configs/account_mappings.json (known keys: {known})"
+        )
+    template["default_account"] = account.account_id
+    current_tag = template.get("custom_tag", "")
+    template["custom_tag"] = f"{current_tag} {account.abbreviation}"
+    return (
+        f"matched {key!r} -> account id {account.account_id}, abbreviation {account.abbreviation!r}"
+    )
 
 
 def _lookup_account_name(account_id: int) -> str | None:
@@ -63,28 +129,6 @@ def _lookup_account_name(account_id: int) -> str | None:
         return None
 
 
-def _print_response(response: requests.Response) -> None:
-    """Print the importer's response in the most readable form available."""
-    content_type = response.headers.get("content-type", "")
-    if "application/json" in content_type:
-        try:
-            print(json.dumps(response.json(), indent=2))
-            return
-        except ValueError:
-            pass
-    if "text/html" in content_type:
-        body = response.text
-        title_match = re.search(r"<title>([^<]+)</title>", body)
-        error_match = re.search(r'<p class="text-danger">\s*(.*?)\s*</p>', body, flags=re.DOTALL)
-        print(f"HTTP {response.status_code} from {response.url}", file=sys.stderr)
-        if title_match:
-            print(f"  title: {title_match.group(1).strip()}", file=sys.stderr)
-        if error_match:
-            print(f"  error: {error_match.group(1).strip()}", file=sys.stderr)
-        return
-    print(response.text)
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Upload a bank CSV to the Firefly III Data Importer's /autoupload endpoint.",
@@ -94,8 +138,8 @@ def main():
         "-t",
         "--template",
         choices=sorted(TEMPLATES),
-        default="chase_fu",
-        help="Which JSON template under configs/ to use (default: chase_fu).",
+        default="chase_cc",
+        help="Which JSON template under configs/ to use (default: chase_cc).",
     )
     _ = parser.add_argument(
         "-n",
@@ -116,10 +160,28 @@ def main():
     importer_url = os.environ["DATA_IMPORTER_URL"].rstrip("/")
     secret = os.environ["AUTO_IMPORT_SECRET"]
 
+    mappings = _load_account_mappings()
+    try:
+        template_dict = _TemplateDictAdapter.validate_json(
+            template_path.read_text(encoding="utf-8")
+        )
+    except ValidationError as exc:
+        parser.error(f"Template {template_path.name} is not a valid JSON object:\n{exc}")
+    mapping_summary = _apply_template_overrides(
+        template_dict, args.template, csv_path, mappings, parser
+    )
+    try:
+        template = _ImporterTemplate.model_validate(template_dict)
+    except ValidationError as exc:
+        parser.error(
+            f"Template {template_path.name} failed validation after applying overrides "
+            + f"for {args.template!r} and {csv_path.name!r}:\n{exc}"
+        )
+    payload = json.dumps(template_dict).encode("utf-8")
+
     if args.dry_run:
         with csv_path.open(encoding="utf-8", newline="") as csv_file:
             row_count = max(sum(1 for _ in csv_file) - 1, 0)
-        template = _ImporterTemplate.model_validate_json(template_path.read_text(encoding="utf-8"))
         account_label = str(template.default_account)
         name = _lookup_account_name(template.default_account)
         if name is not None:
@@ -127,28 +189,31 @@ def main():
         print("[dry run] No request will be made. Would POST:")
         print(f"  URL:        {importer_url}/autoupload")
         print(f"  secret:     <{len(secret)} chars>")
-        print(f"  json:       {template_path} ({template_path.stat().st_size} bytes)")
+        print(f"  json:       {template_path} ({len(payload)} bytes, mutated)")
+        if mapping_summary is not None:
+            print(f"    mapping:         {mapping_summary}")
         print(f"    default_account: {account_label}")
         print(f"    custom_tag:      {template.custom_tag!r}")
         print(f"    roles:           {template.roles}")
         print(f"  importable: {csv_path} ({csv_path.stat().st_size} bytes, {row_count} data rows)")
         return
 
-    with csv_path.open("rb") as csv_file, template_path.open("rb") as json_file:
+    with csv_path.open("rb") as csv_file:
         response = requests.post(
             f"{importer_url}/autoupload",
             data={"secret": secret},
             files={
-                "json": (template_path.name, json_file, "application/json"),
+                "json": (template_path.name, io.BytesIO(payload), "application/json"),
                 "importable": (csv_path.name, csv_file, "text/csv"),
             },
             timeout=120,
         )
 
     try:
-        _print_response(response)
-    finally:
-        response.raise_for_status()
+        print(json.dumps(response.json(), indent=2))
+    except ValueError:
+        print(response.text)
+    response.raise_for_status()
 
 
 if __name__ == "__main__":

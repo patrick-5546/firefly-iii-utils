@@ -53,17 +53,53 @@ Uploads a CSV plus a JSON template from `configs/` to the importer's
 
 ```sh
 # Defaults to the chase_cc template:
-uv run python import_csv.py path/to/Chase_Activity.CSV
+uv run python import_csv.py path/to/Chase1234_Activity.CSV
 
 # Explicit template (must match a key in TEMPLATES inside import_csv.py):
-uv run python import_csv.py --template chase_cc path/to/Chase_Activity.CSV
+uv run python import_csv.py --template chase_cc path/to/Chase1234_Activity.CSV
 
 # Dry run: validate inputs and print what would be sent, without making the request:
-uv run python import_csv.py --dry-run path/to/Chase_Activity.CSV
+uv run python import_csv.py --dry-run path/to/Chase1234_Activity.CSV
 ```
 
-To add a new bank, drop its JSON template into `configs/` and add an
-entry to the `TEMPLATES` dict in `import_csv.py`.
+#### Per-account overrides (`configs/account_mappings.json`)
+
+A single importer template can be shared across multiple accounts at the
+same bank (e.g. several Chase credit cards using one CSV format). The
+mapping file `configs/account_mappings.json` (gitignored, since account
+ids are private) lets the script pick the right Firefly III account id
+and tag suffix based on the CSV filename. Schema:
+
+```json
+{
+  "<template_name>": {
+    "filename_pattern": "Bank(\\d{4})_",
+    "accounts": {
+      "<lookup_key>": { "account_id": 1, "abbreviation": "aa" }
+    }
+  }
+}
+```
+
+For each upload, when the selected template has an entry in this file:
+
+1. `filename_pattern` is applied to the CSV filename. It must contain
+   exactly one capture group; the captured value is the lookup key
+   into `accounts`.
+2. The matching entry's `account_id` overrides `default_account` in the
+   template before it is sent to the importer.
+3. The entry's `abbreviation` is appended to `custom_tag`, so a base
+   tag of `"%datetime%: <template_name>"` becomes
+   `"%datetime%: <template_name> <abbreviation>"`.
+
+If the filename doesn't match the pattern, or the captured key isn't in
+`accounts`, or the post-override `default_account` is still `< 1`, the
+script refuses to upload and prints an error explaining what went wrong.
+
+To add a new bank, drop its JSON template into `configs/`, add an entry
+to the `TEMPLATES` dict in `import_csv.py`, and (if the bank has
+multiple accounts sharing one template) add a matching entry to
+`configs/account_mappings.json`.
 
 ## Development
 
