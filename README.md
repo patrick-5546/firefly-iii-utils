@@ -52,16 +52,25 @@ Uploads a CSV plus a JSON template from `configs/` to the importer's
 `/autoupload` endpoint, replicating the manual file-upload wizard.
 
 ```sh
-# Defaults to the chase_cc template:
+# Template is auto-detected from configs/account_mappings.json
+# (filename pattern or CSV column header):
 uv run python import_csv.py path/to/Chase1234_Activity.CSV
+uv run python import_csv.py path/to/2026-06-06_transaction_download.csv
 
-# Explicit template (must match a key in TEMPLATES inside import_csv.py):
+# Explicit template (overrides auto-detection; must match a key in
+# TEMPLATES inside import_csv.py):
 uv run python import_csv.py --template chase_cc path/to/Chase1234_Activity.CSV
-uv run python import_csv.py --template cap1_cc path/to/2026-06-06_transaction_download.csv
 
 # Dry run: validate inputs and print what would be sent, without making the request:
 uv run python import_csv.py --dry-run path/to/Chase1234_Activity.CSV
 ```
+
+Auto-detection iterates the templates registered in
+`import_csv.py`'s `TEMPLATES` dict and, for each one that has an entry
+in `configs/account_mappings.json`, checks whether its
+`filename_pattern` matches the CSV filename or its `csv_column_header`
+is present in the CSV's header row. If zero templates match — or more
+than one — the script errors out and asks you to pass `-t/--template`.
 
 #### Per-account overrides (`configs/account_mappings.json`)
 
@@ -140,9 +149,11 @@ Currently registered:
   `Credit` are populated cause the upload to be refused.
 
 To add a new bank, drop its JSON template into `configs/`, add an entry
-to the `TEMPLATES` dict in `import_csv.py`, optionally add a matching
-entry to `configs/account_mappings.json`, and (if the CSV format needs
-reshaping) register a preprocessor in the `PREPROCESSORS` dict.
+to the `TEMPLATES` dict in `import_csv.py`, add a matching entry to
+`configs/account_mappings.json` (its `filename_pattern` /
+`csv_column_header` is what makes the template auto-detectable as well
+as resolving the per-CSV account override), and (if the CSV format
+needs reshaping) register a preprocessor in the `PREPROCESSORS` dict.
 
 ## Development
 

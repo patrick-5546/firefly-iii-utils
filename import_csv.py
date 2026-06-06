@@ -81,12 +81,46 @@ _TemplateDictAdapter: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, obj
 
 class Args(BaseModel):
     csv_path: str
-    template: str
+    template: str | None
     dry_run: bool
 
 
 def _load_account_mappings() -> dict[str, _TemplateMapping]:
     return _AccountMappingsAdapter.validate_json(ACCOUNT_MAPPINGS_PATH.read_text(encoding="utf-8"))
+
+
+def _detect_template(
+    csv_path: Path,
+    csv_bytes: bytes,
+    mappings: dict[str, _TemplateMapping],
+) -> list[str]:
+    """Return all template names whose mapping rule matches the CSV.
+
+    Reuses the per-template ``filename_pattern`` / ``csv_column_header``
+    rules from ``configs/account_mappings.json``: a template matches when
+    its filename pattern is found in ``csv_path.name`` or when its
+    configured column header is present in the CSV's header row.
+    Templates without a mapping entry cannot be auto-detected and are
+    skipped.
+    """
+    header: list[str] | None = None
+    matches: list[str] = []
+    for name in TEMPLATES:
+        mapping = mappings.get(name)
+        if mapping is None:
+            continue
+        if mapping.filename_pattern is not None:
+            if re.search(mapping.filename_pattern, csv_path.name) is not None:
+                matches.append(name)
+            continue
+        assert mapping.csv_column_header is not None
+        if header is None:
+            reader = csv.reader(io.StringIO(csv_bytes.decode("utf-8-sig")))
+            empty: list[str] = []
+            header = next(reader, empty)
+        if mapping.csv_column_header in header:
+            matches.append(name)
+    return matches
 
 
 def _resolve_account_from_filename(
@@ -280,8 +314,10 @@ def main():
         "-t",
         "--template",
         choices=sorted(TEMPLATES),
-        default="chase_cc",
-        help="Which JSON template under configs/ to use (default: chase_cc).",
+        help=(
+            "Which JSON template under configs/ to use. If omitted, the template is "
+            "auto-detected from the CSV using the rules in configs/account_mappings.json."
+        ),
     )
     _ = parser.add_argument(
         "-n",
@@ -294,7 +330,32 @@ def main():
     csv_path = Path(args.csv_path)
     if not csv_path.is_file():
         parser.error(f"CSV file not found: {csv_path}")
-    template_path = TEMPLATES[args.template]
+
+    csv_bytes = csv_path.read_bytes()
+    mappings = _load_account_mappings()
+
+    auto_detected = False
+    if args.template is None:
+        matches = _detect_template(csv_path, csv_bytes, mappings)
+        known = ", ".join(sorted(TEMPLATES)) or "<none>"
+        if not matches:
+            parser.error(
+                f"Could not auto-detect a template for {csv_path.name!r}: no template's "
+                + "filename_pattern or csv_column_header in configs/account_mappings.json "
+                + f"matched. Re-run with -t/--template (known templates: {known})."
+            )
+        if len(matches) > 1:
+            candidates = ", ".join(matches)
+            parser.error(
+                f"Auto-detection for {csv_path.name!r} is ambiguous: matched {candidates}. "
+                + "Re-run with -t/--template to pick one."
+            )
+        template_name = matches[0]
+        auto_detected = True
+    else:
+        template_name = args.template
+
+    template_path = TEMPLATES[template_name]
     if not template_path.is_file():
         parser.error(f"Template file not found: {template_path}")
 
@@ -302,8 +363,6 @@ def main():
     importer_url = os.environ["DATA_IMPORTER_URL"].rstrip("/")
     secret = os.environ["AUTO_IMPORT_SECRET"]
 
-    csv_bytes = csv_path.read_bytes()
-    mappings = _load_account_mappings()
     try:
         template_dict = _TemplateDictAdapter.validate_json(
             template_path.read_text(encoding="utf-8")
@@ -311,27 +370,29 @@ def main():
     except ValidationError as exc:
         parser.error(f"Template {template_path.name} is not a valid JSON object:\n{exc}")
     mapping_summary = _apply_template_overrides(
-        template_dict, args.template, csv_path, csv_bytes, mappings, parser
+        template_dict, template_name, csv_path, csv_bytes, mappings, parser
     )
     try:
         template = _ImporterTemplate.model_validate(template_dict)
     except ValidationError as exc:
         parser.error(
             f"Template {template_path.name} failed validation after applying overrides "
-            + f"for {args.template!r} and {csv_path.name!r}:\n{exc}"
+            + f"for {template_name!r} and {csv_path.name!r}:\n{exc}"
         )
     payload = json.dumps(template_dict).encode("utf-8")
 
-    preprocessor = PREPROCESSORS.get(args.template)
+    preprocessor = PREPROCESSORS.get(template_name)
     preprocessing_summary: str | None = None
     if preprocessor is not None:
         try:
             csv_bytes, rewritten = preprocessor(csv_bytes)
         except ValueError as exc:
-            parser.error(f"Preprocessing {csv_path.name} for {args.template!r} failed: {exc}")
+            parser.error(f"Preprocessing {csv_path.name} for {template_name!r} failed: {exc}")
         preprocessing_summary = (
-            f"{args.template} moved {rewritten} credit row(s) into debit (negated)"
+            f"{template_name} moved {rewritten} credit row(s) into debit (negated)"
         )
+
+    template_label = f"{template_name}{' (auto-detected)' if auto_detected else ''}"
 
     if args.dry_run:
         with io.BytesIO(csv_bytes) as buf:
@@ -341,6 +402,7 @@ def main():
         if name is not None:
             account_label = f"{template.default_account} ({name})"
         print("[dry run] No request will be made. Would POST:")
+        print(f"  template:   {template_label}")
         print(f"  URL:        {importer_url}/autoupload")
         print(f"  secret:     <{len(secret)} chars>")
         print(f"  json:       {template_path} ({len(payload)} bytes, mutated)")
@@ -357,6 +419,7 @@ def main():
             print(f"    preprocessing:   {preprocessing_summary}")
         return
 
+    print(f"template: {template_label}")
     response = requests.post(
         f"{importer_url}/autoupload",
         data={"secret": secret},
