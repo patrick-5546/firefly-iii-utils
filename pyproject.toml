@@ -13,8 +13,11 @@ dev = [
     "ruff>=0.15.16",
 ]
 
+[tool.ruff]
+line-length = 100
+
 [tool.ruff.lint]
-extend-select = ["I"]
+extend-select = ["B", "E501", "I", "SIM", "UP"]
 
 [tool.basedpyright]
 typeCheckingMode = "standard"
