@@ -57,6 +57,7 @@ uv run python import_csv.py path/to/Chase1234_Activity.CSV
 
 # Explicit template (must match a key in TEMPLATES inside import_csv.py):
 uv run python import_csv.py --template chase_cc path/to/Chase1234_Activity.CSV
+uv run python import_csv.py --template cap1_cc path/to/2026-06-06_transaction_download.csv
 
 # Dry run: validate inputs and print what would be sent, without making the request:
 uv run python import_csv.py --dry-run path/to/Chase1234_Activity.CSV
@@ -68,7 +69,22 @@ A single importer template can be shared across multiple accounts at the
 same bank (e.g. several Chase credit cards using one CSV format). The
 mapping file `configs/account_mappings.json` (gitignored, since account
 ids are private) lets the script pick the right Firefly III account id
-and tag suffix based on the CSV filename. Schema:
+and tag suffix.
+
+Each template entry uses **exactly one** of two lookup sources:
+
+- `filename_pattern` — a regex with one capture group, applied to the CSV
+  filename. The captured value is the lookup key into `accounts`. Used by
+  `chase_cc`, where the filename embeds the last 4 digits of the card.
+- `csv_column_header` — the header name of a column in the CSV body. Every
+  data row's value in that column is treated as a lookup key into `accounts`.
+  All rows must resolve to the **same** Firefly III `account_id`, otherwise
+  the script refuses to upload (this guards against mixed-account exports).
+  Used by `cap1_cc`, where the filename has no identifier but the `Card No.`
+  column does — and multiple card numbers may legitimately point to the
+  same account (e.g. a primary card plus an authorized user).
+
+Schema:
 
 ```json
 {
@@ -77,29 +93,56 @@ and tag suffix based on the CSV filename. Schema:
     "accounts": {
       "<lookup_key>": { "account_id": 1, "abbreviation": "aa" }
     }
+  },
+  "<other_template>": {
+    "csv_column_header": "Card No.",
+    "accounts": {
+      "<lookup_key>": { "account_id": 2, "abbreviation": "bb" }
+    }
   }
 }
 ```
 
 For each upload, when the selected template has an entry in this file:
 
-1. `filename_pattern` is applied to the CSV filename. It must contain
-   exactly one capture group; the captured value is the lookup key
-   into `accounts`.
+1. The configured lookup source is resolved to a key (or set of keys, for
+   `csv_column_header`).
 2. The matching entry's `account_id` overrides `default_account` in the
    template before it is sent to the importer.
 3. The entry's `abbreviation` is appended to `custom_tag`, so a base
    tag of `"%datetime%: <template_name>"` becomes
    `"%datetime%: <template_name> <abbreviation>"`.
 
-If the filename doesn't match the pattern, or the captured key isn't in
-`accounts`, or the post-override `default_account` is still `< 1`, the
+If the lookup fails — filename doesn't match, captured key isn't in
+`accounts`, a CSV row has an unknown key, multiple rows disagree on the
+account, or the post-override `default_account` is still `< 1` — the
 script refuses to upload and prints an error explaining what went wrong.
 
+#### Per-template CSV preprocessing
+
+Some banks emit CSVs that don't match the importer template's column
+shape and need a small transformation before upload. `import_csv.py`
+keeps a small registry of preprocessors keyed by template name; when one
+is registered, the CSV is parsed, rewritten in memory, and the
+transformed bytes are uploaded (the original file on disk is never
+modified).
+
+Currently registered:
+
+- **`cap1_cc`** — Capital One puts charges in `Debit` (positive) and
+  payments / refunds in `Credit` (positive), but the importer template
+  only points its `amount` role at `Debit`. For every row with a value
+  in `Credit`, the preprocessor moves it into `Debit` with a leading
+  minus sign, so charges stay positive and payments become negative
+  within the merged column. (Note: the cap1 and chase_cc sign
+  conventions are opposite; rely on Firefly III's rule engine to flip
+  signs for the cap1 account if needed.) Rows where both `Debit` and
+  `Credit` are populated cause the upload to be refused.
+
 To add a new bank, drop its JSON template into `configs/`, add an entry
-to the `TEMPLATES` dict in `import_csv.py`, and (if the bank has
-multiple accounts sharing one template) add a matching entry to
-`configs/account_mappings.json`.
+to the `TEMPLATES` dict in `import_csv.py`, optionally add a matching
+entry to `configs/account_mappings.json`, and (if the CSV format needs
+reshaping) register a preprocessor in the `PREPROCESSORS` dict.
 
 ## Development
 
