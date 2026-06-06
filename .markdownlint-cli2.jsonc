@@ -1,0 +1,9 @@
+{
+  // markdownlint rule configuration
+  // https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+  "config": {
+    "MD013": {
+      "line_length": 100
+    }
+  }
+}

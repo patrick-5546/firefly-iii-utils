@@ -1,8 +1,5 @@
 # finances
 
-Scripts to process financial transaction CSVs and import them into a finance
-tracker via its API.
-
 ## Development
 
 This project is managed with [uv](https://docs.astral.sh/uv/). Sync the
@@ -12,14 +9,6 @@ environment, including dev tools, with:
 uv sync
 ```
 
-Run the dev tools via `uv run`:
-
-```sh
-uv run ruff check     # lint (add --fix to auto-fix)
-uv run ruff format    # format
-uv run basedpyright   # type-check
-```
-
 Git hooks are managed with [prek](https://github.com/j178/prek), a drop-in
 pre-commit alternative. Install the hook once per clone:
 
@@ -27,9 +16,9 @@ pre-commit alternative. Install the hook once per clone:
 uv run prek install
 ```
 
-The hooks (ruff check, ruff format, basedpyright) then run automatically on
-`git commit`. They only **check** and never modify your files, so if a hook
-fails, fix the issues with `uv run ruff check --fix` and `uv run ruff format`.
+The hooks then run automatically on `git commit`.
+They only **check** and never modify your files, so if a hook fails,
+fix the issues with `uv run ruff check --fix` and `uv run ruff format`.
 To run all hooks against all files on demand:
 
 ```sh

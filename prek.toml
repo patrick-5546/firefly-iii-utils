@@ -30,3 +30,8 @@ types_or = ["python", "pyi"]
 pass_filenames = false
 require_serial = true
 priority = 0
+
+[[repos]]
+repo = "https://github.com/DavidAnson/markdownlint-cli2"
+rev = "v0.22.1"
+hooks = [{ id = "markdownlint-cli2", priority = 0 }]
