@@ -1,10 +1,11 @@
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import Self
+from typing import ClassVar, Self
 
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     TypeAdapter,
     field_validator,
@@ -22,6 +23,60 @@ class AccountData(BaseModel):
 
 class AccountResponse(BaseModel):
     data: AccountData
+
+
+class Pagination(BaseModel):
+    current_page: int = Field(ge=1)
+    total_pages: int = Field(ge=0)
+
+
+class Meta(BaseModel):
+    pagination: Pagination
+
+
+class TagAttrs(BaseModel):
+    tag: str
+
+
+class TagData(BaseModel):
+    attributes: TagAttrs
+
+
+class TagListResponse(BaseModel):
+    data: list[TagData]
+    meta: Meta
+
+
+class TransactionSplit(BaseModel):
+    """Subset of the Firefly III TransactionSplit schema used by the export script.
+
+    The real schema has dozens of fields; ``extra="ignore"`` drops the
+    rest silently so a schema bump doesn't break the model.
+    """
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+
+    transaction_journal_id: str
+    description: str
+    amount: str
+    date: str
+    source_name: str | None = None
+    destination_name: str | None = None
+    category_id: str | None = None
+
+
+class TransactionAttrs(BaseModel):
+    transactions: list[TransactionSplit]
+
+
+class TransactionData(BaseModel):
+    id: str
+    attributes: TransactionAttrs
+
+
+class TransactionListResponse(BaseModel):
+    data: list[TransactionData]
+    meta: Meta
 
 
 class ImporterTemplate(BaseModel):
@@ -65,4 +120,10 @@ class Args(BaseModel):
     path: str
     template: str | None
     dry_run: bool
+    no_color: bool
+
+
+class ExportArgs(BaseModel):
+    prefix: str
+    output: str | None
     no_color: bool

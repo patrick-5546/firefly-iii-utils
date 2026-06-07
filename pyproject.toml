@@ -15,7 +15,8 @@ dependencies = [
 ]
 
 [project.scripts]
-firefly-iii-import-transactions = "firefly_iii_utils.import_transactions:main"
+firefly-iii-import-data = "firefly_iii_utils.import_data:main"
+firefly-iii-guess-categories = "firefly_iii_utils.guess_categories:main"
 
 [dependency-groups]
 dev = [

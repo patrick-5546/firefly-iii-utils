@@ -115,32 +115,34 @@ Of the templates in this repository, these ones use the inverted convention:
 
 ## Usage
 
-### `firefly-iii-import-transactions` — upload a bank CSV via the Data Importer
+### `firefly-iii-import-data`
+
+> Upload a bank CSV via the Data Importer
 
 Uploads a CSV plus a JSON template from `configs/` to the importer's
 `/autoupload` endpoint, replicating the manual file-upload wizard.
 
 ```sh
 # Template auto-detected from filename or CSV column header (see below):
-uv run firefly-iii-import-transactions path/to/Chase1234_Activity.CSV
-uv run firefly-iii-import-transactions path/to/2026-06-06_transaction_download.csv
+uv run firefly-iii-import-data path/to/Chase1234_Activity.CSV
+uv run firefly-iii-import-data path/to/2026-06-06_transaction_download.csv
 
 # Explicit template (overrides auto-detection; must be a key in TEMPLATES):
-uv run firefly-iii-import-transactions --template chase_cc path/to/Chase1234_Activity.CSV
+uv run firefly-iii-import-data --template chase_cc path/to/Chase1234_Activity.CSV
 
 # Dry run: validate inputs and print what would be sent, without making the request:
-uv run firefly-iii-import-transactions --dry-run path/to/Chase1234_Activity.CSV
+uv run firefly-iii-import-data --dry-run path/to/Chase1234_Activity.CSV
 
 # Directory: process every *.csv / *.CSV file directly under the
 # directory (no recursion) in sorted order. Each file's template is
 # auto-detected per file, so --template is not allowed with a
 # directory. Processing stops on the first failure.
-uv run firefly-iii-import-transactions path/to/transactions/
-uv run firefly-iii-import-transactions --dry-run path/to/transactions/
+uv run firefly-iii-import-data path/to/transactions/
+uv run firefly-iii-import-data --dry-run path/to/transactions/
 
 # Disable colored output (also auto-disabled when stdout isn't a TTY
 # or when the NO_COLOR environment variable is set):
-uv run firefly-iii-import-transactions --no-color path/to/transactions/
+uv run firefly-iii-import-data --no-color path/to/transactions/
 ```
 
 Auto-detection iterates the templates registered in
@@ -224,6 +226,39 @@ entries under that template's key in `configs/account_mappings.json`,
 and (if the CSV format needs reshaping) add a preprocessor function
 to `src/firefly_iii_utils/preprocessors.py` and wire it through the
 new entry's `preprocessor` field.
+
+### `firefly-iii-guess-categories`
+
+> Export uncategorized transactions by tag prefix
+
+Looks up every Firefly III tag whose name starts with the given prefix
+and writes a CSV of every uncategorized transaction across those tags.
+Columns: `description,amount,date,source_account,destination_account`,
+sorted ascending by `date` then by `amount`. Dates are formatted as
+`YYYY-MM-DD`.
+
+```sh
+# Print the CSV (colorized when stdout is a TTY; status / progress goes
+# to stderr):
+uv run firefly-iii-guess-categories vacation-2024
+
+# Or redirect to a file (auto-detected as non-TTY -> plain CSV, no
+# escape codes):
+uv run firefly-iii-guess-categories vacation-2024 > uncategorized.csv
+
+# Write directly to a file (-o/--output):
+uv run firefly-iii-guess-categories -o uncategorized.csv vacation-2024
+
+# Disable column colors for the CSV on stdout (also auto-disabled when
+# stdout isn't a TTY or when the NO_COLOR environment variable is set):
+uv run firefly-iii-guess-categories --no-color vacation-2024
+```
+
+The script does not handle split transactions or transactions that
+appear under more than one matching tag — it errors out with a clear
+message in either case, on the assumption that the Data Importer's
+duplicate detection makes these situations rare and worth surfacing
+rather than silently working around.
 
 ## Development
 
