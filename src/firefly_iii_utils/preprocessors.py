@@ -86,6 +86,20 @@ def preprocess_wf_acct(csv_bytes: bytes) -> tuple[bytes, str]:
     deposits / withdrawals. Returns the rewritten CSV bytes and a short
     summary fragment describing how many rows were dropped.
     """
+    csv_bytes, removed = _drop_rows_where_column_equals(csv_bytes, column="Type", value="Transfer")
+    return csv_bytes, f"removed {removed} transfer row(s)"
+
+
+def _drop_rows_where_column_equals(
+    csv_bytes: bytes, *, column: str, value: str
+) -> tuple[bytes, int]:
+    """Drop every row whose ``column`` (after stripping) equals ``value``.
+
+    Shared helper for ``preprocess_*`` functions that need to filter
+    rows by an exact column-value match. Returns the rewritten CSV
+    bytes and the number of rows dropped. Raises ``ValueError`` if the
+    CSV is empty or missing the requested column.
+    """
     text = csv_bytes.decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text))
     rows = list(reader)
@@ -93,7 +107,7 @@ def preprocess_wf_acct(csv_bytes: bytes) -> tuple[bytes, str]:
         raise ValueError("CSV is empty (no header row).")
     header = rows[0]
     try:
-        type_idx = header.index("Type")
+        col_idx = header.index(column)
     except ValueError as exc:
         raise ValueError(
             f"CSV header missing required column: {exc}. Header was: {header!r}"
@@ -101,11 +115,11 @@ def preprocess_wf_acct(csv_bytes: bytes) -> tuple[bytes, str]:
     kept: list[list[str]] = [header]
     removed = 0
     for row in rows[1:]:
-        if len(row) > type_idx and row[type_idx].strip() == "Transfer":
+        if len(row) > col_idx and row[col_idx].strip() == value:
             removed += 1
             continue
         kept.append(row)
     out = io.StringIO(newline="")
     writer = csv.writer(out)
     writer.writerows(kept)
-    return out.getvalue().encode("utf-8"), f"removed {removed} transfer row(s)"
+    return out.getvalue().encode("utf-8"), removed
