@@ -73,3 +73,4 @@ class Args(BaseModel):
     path: str
     template: str | None
     dry_run: bool
+    no_color: bool

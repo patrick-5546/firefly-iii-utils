@@ -140,6 +140,10 @@ uv run firefly-iii-import-transactions --dry-run path/to/Chase1234_Activity.CSV
 # directory. Processing stops on the first failure.
 uv run firefly-iii-import-transactions path/to/transactions/
 uv run firefly-iii-import-transactions --dry-run path/to/transactions/
+
+# Disable colored output (also auto-disabled when stdout isn't a TTY
+# or when the NO_COLOR environment variable is set):
+uv run firefly-iii-import-transactions --no-color path/to/transactions/
 ```
 
 Auto-detection iterates the templates registered in

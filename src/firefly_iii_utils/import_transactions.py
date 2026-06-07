@@ -7,6 +7,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 from pydantic import ValidationError
+from rich.console import Console
 
 from .api import lookup_account_name
 from .mappings import (
@@ -16,6 +17,7 @@ from .mappings import (
     load_template_detection,
 )
 from .models import Args, CardAccount, ImporterTemplate, TemplateDetectionRule, TemplateDictAdapter
+from .output import make_console, print_header, print_response
 from .paths import TEMPLATES
 
 
@@ -28,6 +30,7 @@ def _process_one(
     secret: str,
     dry_run: bool,
     parser: argparse.ArgumentParser,
+    console: Console,
 ) -> None:
     csv_bytes = csv_path.read_bytes()
 
@@ -120,9 +123,11 @@ def _process_one(
     )
 
     try:
-        print(json.dumps(response.json(), indent=2))
+        body_json = json.dumps(response.json())
     except ValueError:
-        print(response.text)
+        print_response(console, response.text)
+    else:
+        console.print_json(body_json)
     response.raise_for_status()
 
 
@@ -159,6 +164,15 @@ def main():
         action="store_true",
         help="Validate inputs and print what would be sent without making the request.",
     )
+    _ = parser.add_argument(
+        "-N",
+        "--no-color",
+        action="store_true",
+        help=(
+            "Disable colored output. Colors are also disabled automatically when stdout "
+            "is not a terminal or when the NO_COLOR environment variable is set."
+        ),
+    )
     args = Args.model_validate(vars(parser.parse_args()))
 
     input_path = Path(args.path)
@@ -181,8 +195,10 @@ def main():
     importer_url = os.environ["DATA_IMPORTER_URL"].rstrip("/")
     secret = os.environ["AUTO_IMPORT_SECRET"]
 
+    console = make_console(args.no_color)
+
     for csv_path in csv_files:
-        print(f"=== {csv_path.name} ===")
+        print_header(console, csv_path.name)
         _process_one(
             csv_path,
             args.template,
@@ -192,6 +208,7 @@ def main():
             secret,
             args.dry_run,
             parser,
+            console,
         )
 
 
