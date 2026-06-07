@@ -1,7 +1,6 @@
 # finances
 
-Scripts for working with my [Firefly III](https://www.firefly-iii.org/)
-instance.
+Scripts for working with [Firefly III](https://www.firefly-iii.org/).
 
 ## Setup
 
@@ -30,23 +29,16 @@ URL and secret in this repo's `.env` as `DATA_IMPORTER_URL` and
 
 Required environment variables (place in `.env`, which is gitignored):
 
-| Variable             | Used by         | Purpose                                                                  |
-| -------------------- | --------------- | ------------------------------------------------------------------------ |
-| `FIREFLY_III_URL`    | `query.py`      | Base URL of the Firefly III instance (e.g. `https://firefly.example`).   |
-| `FIREFLY_III_PAT`    | `query.py`      | Personal Access Token for Firefly III's API.                             |
-| `DATA_IMPORTER_URL`  | `import_csv.py` | Base URL of the Firefly III **Data Importer** instance (a separate URL). |
-| `AUTO_IMPORT_SECRET` | `import_csv.py` | Shared secret matching the importer's `AUTO_IMPORT_SECRET` env var.      |
+| Variable             | Purpose                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| `FIREFLY_III_URL`    | Base URL of the Firefly III instance. Used by `--dry-run` to look up account names. |
+| `FIREFLY_III_PAT`    | Personal Access Token for Firefly III's API (paired with `FIREFLY_III_URL`).        |
+| `DATA_IMPORTER_URL`  | Base URL of the Firefly III **Data Importer** instance (a separate URL).            |
+| `AUTO_IMPORT_SECRET` | Shared secret matching the importer's `AUTO_IMPORT_SECRET` env var.                 |
 
 ## Usage
 
-### `query.py` — quick Firefly III API queries
-
-```sh
-uv run python query.py about
-uv run python query.py accounts
-```
-
-### `import_csv.py` — upload a bank CSV via the Data Importer
+### `firefly-iii-import-transactions` — upload a bank CSV via the Data Importer
 
 Uploads a CSV plus a JSON template from `configs/` to the importer's
 `/autoupload` endpoint, replicating the manual file-upload wizard.
@@ -54,23 +46,24 @@ Uploads a CSV plus a JSON template from `configs/` to the importer's
 ```sh
 # Template is auto-detected from configs/account_mappings.json
 # (filename pattern or CSV column header):
-uv run python import_csv.py path/to/Chase1234_Activity.CSV
-uv run python import_csv.py path/to/2026-06-06_transaction_download.csv
+uv run firefly-iii-import-transactions path/to/Chase1234_Activity.CSV
+uv run firefly-iii-import-transactions path/to/2026-06-06_transaction_download.csv
 
 # Explicit template (overrides auto-detection; must match a key in
-# TEMPLATES inside import_csv.py):
-uv run python import_csv.py --template chase_cc path/to/Chase1234_Activity.CSV
+# TEMPLATES inside src/firefly_iii_utils/paths.py):
+uv run firefly-iii-import-transactions --template chase_cc path/to/Chase1234_Activity.CSV
 
 # Dry run: validate inputs and print what would be sent, without making the request:
-uv run python import_csv.py --dry-run path/to/Chase1234_Activity.CSV
+uv run firefly-iii-import-transactions --dry-run path/to/Chase1234_Activity.CSV
 ```
 
 Auto-detection iterates the templates registered in
-`import_csv.py`'s `TEMPLATES` dict and, for each one that has an entry
-in `configs/account_mappings.json`, checks whether its
-`filename_pattern` matches the CSV filename or its `csv_column_header`
-is present in the CSV's header row. If zero templates match — or more
-than one — the script errors out and asks you to pass `-t/--template`.
+`src/firefly_iii_utils/paths.py`'s `TEMPLATES` dict and, for each one
+that has an entry in `configs/account_mappings.json`, checks whether
+its `filename_pattern` matches the CSV filename or its
+`csv_column_header` is present in the CSV's header row. If zero
+templates match — or more than one — the script errors out and asks
+you to pass `-t/--template`.
 
 #### Per-account overrides (`configs/account_mappings.json`)
 
@@ -130,11 +123,11 @@ script refuses to upload and prints an error explaining what went wrong.
 #### Per-template CSV preprocessing
 
 Some banks emit CSVs that don't match the importer template's column
-shape and need a small transformation before upload. `import_csv.py`
-keeps a small registry of preprocessors keyed by template name; when one
-is registered, the CSV is parsed, rewritten in memory, and the
-transformed bytes are uploaded (the original file on disk is never
-modified).
+shape and need a small transformation before upload.
+`firefly-iii-import-transactions` keeps a small registry of preprocessors keyed
+by template name; when one is registered, the CSV is parsed, rewritten
+in memory, and the transformed bytes are uploaded (the original file
+on disk is never modified).
 
 Currently registered:
 
@@ -149,16 +142,19 @@ Currently registered:
   `Credit` are populated cause the upload to be refused.
 
 To add a new bank, drop its JSON template into `configs/`, add an entry
-to the `TEMPLATES` dict in `import_csv.py`, add a matching entry to
-`configs/account_mappings.json` (its `filename_pattern` /
-`csv_column_header` is what makes the template auto-detectable as well
-as resolving the per-CSV account override), and (if the CSV format
-needs reshaping) register a preprocessor in the `PREPROCESSORS` dict.
+to the `TEMPLATES` dict in `src/firefly_iii_utils/paths.py`, add a
+matching entry to `configs/account_mappings.json` (its
+`filename_pattern` / `csv_column_header` is what makes the template
+auto-detectable as well as resolving the per-CSV account override),
+and (if the CSV format needs reshaping) register a preprocessor in
+the `PREPROCESSORS` dict in
+`src/firefly_iii_utils/preprocessors.py`.
 
 ## Development
 
 This project is managed with [uv](https://docs.astral.sh/uv/). Sync the
-environment, including dev tools, with:
+environment, including dev tools and an editable install of the
+`firefly-iii-utils` package itself, with:
 
 ```sh
 uv sync

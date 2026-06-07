@@ -90,9 +90,9 @@ wheels = [
 ]
 
 [[package]]
-name = "finances"
+name = "firefly-iii-utils"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },

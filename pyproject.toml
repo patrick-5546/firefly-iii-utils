@@ -1,8 +1,11 @@
 [project]
-name = "finances"
+name = "firefly-iii-utils"
 version = "0.1.0"
-description = "Add your description here"
+description = "Scripts for working with Firefly III."
 readme = "README.md"
+authors = [
+    { name = "Patrick Creighton", email = "pcreighton429@gmail.com" }
+]
 requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2.13.4",
@@ -10,12 +13,19 @@ dependencies = [
     "requests>=2.34.2",
 ]
 
+[project.scripts]
+firefly-iii-import-transactions = "firefly_iii_utils.import_transactions:main"
+
 [dependency-groups]
 dev = [
     "basedpyright>=1.39.6",
     "prek>=0.4.4",
     "ruff>=0.15.16",
 ]
+
+[build-system]
+requires = ["uv_build>=0.11.19,<0.12.0"]
+build-backend = "uv_build"
 
 [tool.ruff]
 line-length = 100
