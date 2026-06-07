@@ -98,12 +98,10 @@ def main():
     preprocessing_summary: str | None = None
     if preprocessor is not None:
         try:
-            csv_bytes, rewritten = preprocessor(csv_bytes)
+            csv_bytes, summary = preprocessor(csv_bytes)
         except ValueError as exc:
             parser.error(f"Preprocessing {csv_path.name} for {template_name!r} failed: {exc}")
-        preprocessing_summary = (
-            f"{template_name} moved {rewritten} credit row(s) into debit (negated)"
-        )
+        preprocessing_summary = f"{template_name} {summary}"
 
     template_label = f"{template_name}{' (auto-detected)' if auto_detected else ''}"
 

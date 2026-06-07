@@ -37,7 +37,7 @@ class CardAccount(BaseModel):
 
 class TemplateInfo(BaseModel):
     path: Path
-    preprocessor: Callable[[bytes], tuple[bytes, int]] | None = None
+    preprocessor: Callable[[bytes], tuple[bytes, str]] | None = None
 
 
 class TemplateDetectionRule(BaseModel):

@@ -2,14 +2,14 @@ import csv
 import io
 
 
-def preprocess_cap1_cc(csv_bytes: bytes) -> tuple[bytes, int]:
+def preprocess_cap1_cc(csv_bytes: bytes) -> tuple[bytes, str]:
     """Move every Credit value into Debit with a leading minus.
 
     Capital One uses two positive columns (Debit for charges, Credit for
     payments / refunds) but the importer template only points its ``amount``
     role at Debit. Negating while merging keeps charges and payments on
-    opposite signs after the move. Returns the rewritten CSV bytes and the
-    number of rows whose Credit was moved.
+    opposite signs after the move. Returns the rewritten CSV bytes and a
+    short summary fragment describing what was changed.
     """
     text = csv_bytes.decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text))
@@ -43,4 +43,38 @@ def preprocess_cap1_cc(csv_bytes: bytes) -> tuple[bytes, int]:
     out = io.StringIO(newline="")
     writer = csv.writer(out)
     writer.writerows(rows)
-    return out.getvalue().encode("utf-8"), rewritten
+    return out.getvalue().encode("utf-8"), f"moved {rewritten} credit row(s) into debit (negated)"
+
+
+def preprocess_wf_acct(csv_bytes: bytes) -> tuple[bytes, str]:
+    """Drop every row whose ``Type`` column is ``Transfer``.
+
+    Wealthfront's cash-account CSV records internal transfers between the
+    user's own Wealthfront accounts as ``Type == "Transfer"`` rows. The
+    preprocessor removes them so they aren't imported as standalone
+    deposits / withdrawals. Returns the rewritten CSV bytes and a short
+    summary fragment describing how many rows were dropped.
+    """
+    text = csv_bytes.decode("utf-8-sig")
+    reader = csv.reader(io.StringIO(text))
+    rows = list(reader)
+    if not rows:
+        raise ValueError("CSV is empty (no header row).")
+    header = rows[0]
+    try:
+        type_idx = header.index("Type")
+    except ValueError as exc:
+        raise ValueError(
+            f"CSV header missing required column: {exc}. Header was: {header!r}"
+        ) from exc
+    kept: list[list[str]] = [header]
+    removed = 0
+    for row in rows[1:]:
+        if len(row) > type_idx and row[type_idx].strip() == "Transfer":
+            removed += 1
+            continue
+        kept.append(row)
+    out = io.StringIO(newline="")
+    writer = csv.writer(out)
+    writer.writerows(kept)
+    return out.getvalue().encode("utf-8"), f"removed {removed} transfer row(s)"

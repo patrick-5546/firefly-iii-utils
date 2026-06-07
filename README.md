@@ -152,6 +152,10 @@ Currently registered:
   conventions are opposite; rely on Firefly III's rule engine to flip
   signs for the cap1 account if needed.) Rows where both `Debit` and
   `Credit` are populated cause the upload to be refused.
+- **`wf_acct`** — Wealthfront's cash-account CSV records internal
+  transfers between the user's own Wealthfront accounts as rows where
+  `Type` is `Transfer`. The preprocessor drops every such row before
+  upload so they aren't imported as standalone deposits / withdrawals.
 
 To add a new bank, drop its JSON template into `configs/`, register
 it in the `TEMPLATES` dict in `src/firefly_iii_utils/paths.py` (the
