@@ -278,6 +278,32 @@ message in either case, on the assumption that the Data Importer's
 duplicate detection makes these situations rare and worth surfacing
 rather than silently working around.
 
+### `firefly-iii-import-categories`
+
+> Apply categories from a guess-categories CSV back to Firefly III
+
+Reads a CSV in the format produced by `firefly-iii-guess-categories`
+(header
+`transaction_id,description,amount,date,source_account,destination_account,category`)
+and updates each row's transaction in Firefly III to use the category
+in the row. The `transaction_id` column actually holds the per-split
+`transaction_journal_id` (the export script writes it under a shorter
+column name for readability); the import script looks up the parent
+transaction group via `GET /api/v1/transaction-journals/{id}` and
+then `PUT`s the new category onto the matching split.
+
+```sh
+# Validate the CSV and update every row's transaction:
+uv run firefly-iii-import-categories path/to/out.csv
+
+# Validate everything but skip the PUTs (no changes made):
+uv run firefly-iii-import-categories --dry-run path/to/out.csv
+
+# Disable colored output (also auto-disabled when stderr isn't a TTY
+# or when the NO_COLOR environment variable is set):
+uv run firefly-iii-import-categories --no-color path/to/out.csv
+```
+
 ## Development
 
 This project is managed with [uv](https://docs.astral.sh/uv/).

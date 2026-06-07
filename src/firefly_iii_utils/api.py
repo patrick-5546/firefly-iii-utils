@@ -10,6 +10,7 @@ from .models import (
     CategoryListResponse,
     TagListResponse,
     TransactionListResponse,
+    TransactionSingleResponse,
     TransactionSplit,
 )
 
@@ -124,6 +125,61 @@ def iter_transactions_for_tag(tag: str) -> Iterator[tuple[str, list[TransactionS
         if page >= body.meta.pagination.total_pages:
             return
         page += 1
+
+
+def get_transaction_journal(journal_id: str) -> tuple[str, list[TransactionSplit]] | None:
+    """Return ``(group_id, splits)`` for a single transaction journal, or ``None`` on 404.
+
+    Wraps ``GET /api/v1/transaction-journals/{id}``, which returns the
+    parent transaction group containing the requested journal. The
+    group id is the value the ``PUT /api/v1/transactions/{id}``
+    endpoint expects in its path. Other ``requests.RequestException``
+    subclasses and ``pydantic.ValidationError`` propagate so the
+    caller can fail loudly.
+    """
+    url, headers = _auth_context_strict()
+    response = requests.get(
+        f"{url}/api/v1/transaction-journals/{journal_id}",
+        headers=headers,
+        timeout=_TIMEOUT,
+    )
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    body = TransactionSingleResponse.model_validate(response.json())
+    return body.data.id, body.data.attributes.transactions
+
+
+def update_transaction_category(
+    group_id: str,
+    journal_id: str,
+    category_name: str,
+) -> None:
+    """Set ``category_name`` on a single split via ``PUT /api/v1/transactions/{group_id}``.
+
+    Including ``transaction_journal_id`` in the request body tells
+    Firefly III to update *that* split in place rather than replacing
+    the entire transactions array on the group — important when a
+    group has more than one split, and harmless for single-split
+    transactions. Raises ``requests.HTTPError`` on non-2xx so callers
+    can surface the failure.
+    """
+    url, headers = _auth_context_strict()
+    payload = {
+        "transactions": [
+            {
+                "transaction_journal_id": journal_id,
+                "category_name": category_name,
+            }
+        ]
+    }
+    response = requests.put(
+        f"{url}/api/v1/transactions/{group_id}",
+        headers={**headers, "Content-Type": "application/json"},
+        json=payload,
+        timeout=_TIMEOUT,
+    )
+    response.raise_for_status()
 
 
 def iter_categories() -> Iterator[str]:

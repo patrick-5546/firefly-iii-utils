@@ -63,6 +63,7 @@ class TransactionSplit(BaseModel):
     source_name: str | None = None
     destination_name: str | None = None
     category_id: str | None = None
+    category_name: str | None = None
 
 
 class TransactionAttrs(BaseModel):
@@ -77,6 +78,17 @@ class TransactionData(BaseModel):
 class TransactionListResponse(BaseModel):
     data: list[TransactionData]
     meta: Meta
+
+
+class TransactionSingleResponse(BaseModel):
+    """Response shape for ``GET /api/v1/transaction-journals/{id}``.
+
+    Returns the full transaction group containing the requested
+    journal, just without a ``meta`` block (it's a single-resource
+    response, not paginated).
+    """
+
+    data: TransactionData
 
 
 class CategoryAttrs(BaseModel):
@@ -141,3 +153,9 @@ class ExportArgs(BaseModel):
     no_color: bool
     model: str
     no_guess: bool
+
+
+class ImportCategoriesArgs(BaseModel):
+    path: str
+    dry_run: bool
+    no_color: bool
