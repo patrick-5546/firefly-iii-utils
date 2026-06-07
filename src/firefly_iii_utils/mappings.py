@@ -172,6 +172,7 @@ def apply_template_overrides(
             rule.csv_column_header, accounts, csv_path, csv_bytes, template_name, parser
         )
     template["default_account"] = account.account_id
-    current_tag = template.get("custom_tag", "")
-    template["custom_tag"] = f"{current_tag} {account.abbreviation}"
+    if account.abbreviation:
+        current_tag = template.get("custom_tag", "")
+        template["custom_tag"] = f"{current_tag} {account.abbreviation}"
     return summary

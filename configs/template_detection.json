@@ -3,5 +3,6 @@
     "cap1_cc": { "csv_column_header": "Card No." },
     "bmo_harris_cc": { "filename_pattern": "^(transactions)_\\d{9}\\.csv$" },
     "wf_acct": { "filename_pattern": "^(.+?) - .*\\d{4}\\.csv$" },
-    "citi_cc": { "filename_pattern": "^(Year to date).*\\.CSV$" }
+    "citi_cc": { "filename_pattern": "^(Year to date).*\\.CSV$" },
+    "bilt_cc": { "filename_pattern": "^(transactions)-\\d{4}-\\d{2}-\\d{2}\\.csv$" }
 }

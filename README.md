@@ -76,7 +76,10 @@ For each upload, the script:
    template's `default_account` before sending to the importer.
 3. Appends the entry's `abbreviation` to `custom_tag`, so a base tag
    of `"%datetime%: <template_name>"` becomes
-   `"%datetime%: <template_name> <abbreviation>"`.
+   `"%datetime%: <template_name> <abbreviation>"`. The `abbreviation`
+   field is optional and may be `""` (or omitted entirely) — in that
+   case the tag is left unchanged. This is useful for single-card
+   banks where there is nothing to disambiguate.
 
 If the lookup fails — filename doesn't match, captured key isn't in
 the template's per-account dict, a CSV row has an unknown key,

@@ -23,4 +23,7 @@ TEMPLATES: dict[str, TemplateInfo] = {
         path=CONFIGS_DIR / "citi_cc.json",
         preprocessor=preprocess_citi_cc,
     ),
+    "bilt_cc": TemplateInfo(
+        path=CONFIGS_DIR / "bilt_cc.json",
+    ),
 }

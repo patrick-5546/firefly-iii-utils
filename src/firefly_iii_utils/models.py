@@ -32,7 +32,7 @@ class ImporterTemplate(BaseModel):
 
 class CardAccount(BaseModel):
     account_id: int = Field(ge=1)
-    abbreviation: str
+    abbreviation: str = ""
 
 
 class TemplateInfo(BaseModel):
