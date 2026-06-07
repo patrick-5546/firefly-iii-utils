@@ -1,4 +1,4 @@
-# finances
+# firefly-iii-utils
 
 Scripts for working with [Firefly III](https://www.firefly-iii.org/).
 
