@@ -79,6 +79,19 @@ class TransactionListResponse(BaseModel):
     meta: Meta
 
 
+class CategoryAttrs(BaseModel):
+    name: str
+
+
+class CategoryData(BaseModel):
+    attributes: CategoryAttrs
+
+
+class CategoryListResponse(BaseModel):
+    data: list[CategoryData]
+    meta: Meta
+
+
 class ImporterTemplate(BaseModel):
     default_account: int = Field(ge=1)
     custom_tag: str
@@ -125,5 +138,6 @@ class Args(BaseModel):
 
 class ExportArgs(BaseModel):
     prefix: str
-    output: str | None
     no_color: bool
+    model: str
+    no_guess: bool

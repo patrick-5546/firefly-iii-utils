@@ -1,34 +1,66 @@
 import argparse
+import asyncio
 import csv
 import io
 import sys
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
-from typing import TextIO
+from typing import NamedTuple, TextIO
 
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.text import Text
 
-from .api import iter_tags, iter_transactions_for_tag
+from . import categorization
+from .api import iter_categories, iter_tags, iter_transactions_for_tag
 from .models import ExportArgs, TransactionSplit
 
 CSV_HEADER = (
+    "transaction_id",
     "description",
     "amount",
     "date",
     "source_account",
     "destination_account",
+    "category",
 )
 
 COLUMN_STYLES = (
+    "bright_black",
     "cyan",
     "green",
     "yellow",
     "magenta",
     "blue",
+    "red",
 )
+
+
+class Row(NamedTuple):
+    """One CSV row keyed by ``transaction_journal_id``.
+
+    Field order matches :data:`CSV_HEADER` so :meth:`visible` can
+    emit the columns directly.
+    """
+
+    transaction_journal_id: str
+    description: str
+    amount: str
+    date: str
+    source_account: str
+    destination_account: str
+    category: str = ""
+
+    def visible(self) -> tuple[str, str, str, str, str, str, str]:
+        return (
+            self.transaction_journal_id,
+            self.description,
+            self.amount,
+            self.date,
+            self.source_account,
+            self.destination_account,
+            self.category,
+        )
 
 
 def _matching_tags(prefix: str) -> list[str]:
@@ -55,8 +87,8 @@ def _collect_rows(
     matching: list[str],
     parser: argparse.ArgumentParser,
     console: Console,
-) -> list[tuple[str, str, str, str, str]]:
-    """Walk every matching tag and return CSV rows for uncategorized splits.
+) -> list[Row]:
+    """Walk every matching tag and return rows for uncategorized splits.
 
     Enforces two invariants and calls :meth:`parser.error` on violation:
 
@@ -65,7 +97,7 @@ def _collect_rows(
       one matching tag.
     """
     seen_journals: dict[str, str] = {}
-    rows: list[tuple[str, str, str, str, str]] = []
+    rows: list[Row] = []
     for tag in matching:
         tag_uncategorized = 0
         tag_total = 0
@@ -104,7 +136,7 @@ def _row_for(
     transaction_id: str,
     tag: str,
     parser: argparse.ArgumentParser,
-) -> tuple[str, str, str, str, str]:
+) -> Row:
     try:
         date_str = _format_date(split.date)
     except ValueError as exc:
@@ -112,23 +144,24 @@ def _row_for(
             f"Transaction {transaction_id!r} under tag {tag!r} has unparseable date "
             + f"{split.date!r}: {exc}"
         )
-    return (
-        split.description,
-        split.amount,
-        date_str,
-        split.source_name or "",
-        split.destination_name or "",
+    return Row(
+        transaction_journal_id=split.transaction_journal_id,
+        description=split.description,
+        amount=split.amount,
+        date=date_str,
+        source_account=split.source_name or "",
+        destination_account=split.destination_name or "",
     )
 
 
-def _sort_key(row: tuple[str, str, str, str, str]) -> tuple[str, Decimal]:
-    return row[2], _parse_amount(row[1])
+def _sort_key(row: Row) -> tuple[str, Decimal]:
+    return row.date, _parse_amount(row.amount)
 
 
-def _write_csv(rows: list[tuple[str, str, str, str, str]], sink: TextIO) -> None:
+def _write_csv(rows: list[Row], sink: TextIO) -> None:
     writer = csv.writer(sink)
     writer.writerow(CSV_HEADER)
-    writer.writerows(rows)
+    writer.writerows(row.visible() for row in rows)
 
 
 def _csv_cell(value: str) -> str:
@@ -138,16 +171,21 @@ def _csv_cell(value: str) -> str:
     and embedded-comma handling match :func:`_write_csv` exactly. The
     trailing ``\\r\\n`` that ``csv.writer`` appends is stripped so the
     cell can be re-joined with commas downstream.
+
+    Special-cases the empty string: a single-cell csv-writer row would
+    emit ``""`` (a quoted empty cell, to disambiguate from a zero-cell
+    row), but ``csv.writer.writerows`` leaves an empty cell bare in
+    multi-cell rows. We mirror the multi-cell behaviour so colored
+    output stays byte-identical to :func:`_write_csv`.
     """
+    if value == "":
+        return ""
     buf = io.StringIO()
     csv.writer(buf).writerow([value])
     return buf.getvalue().rstrip("\r\n")
 
 
-def _write_csv_colored(
-    rows: list[tuple[str, str, str, str, str]],
-    console: Console,
-) -> None:
+def _write_csv_colored(rows: list[Row], console: Console) -> None:
     """Print ``rows`` as a CSV with one Rich style per column.
 
     Each cell goes through :func:`_csv_cell` so the visible characters
@@ -166,7 +204,7 @@ def _write_csv_colored(
     for row in rows:
         line = separator.join(
             Text(_csv_cell(cell), style=style)
-            for cell, style in zip(row, COLUMN_STYLES, strict=True)
+            for cell, style in zip(row.visible(), COLUMN_STYLES, strict=True)
         )
         console.print(line, soft_wrap=True, highlight=False)
 
@@ -175,18 +213,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Export uncategorized Firefly III transactions in tags whose name starts with "
-            "PREFIX to a CSV. Errors out if any matching tag contains a split transaction "
-            "or if the same transaction appears under more than one matching tag."
+            "PREFIX to a CSV, with a guessed category from GitHub Copilot for each row. "
+            "Errors out if any matching tag contains a split transaction or if the same "
+            "transaction appears under more than one matching tag."
         ),
     )
     _ = parser.add_argument(
         "prefix",
         help="Case-sensitive tag-name prefix; every tag whose name starts with this is included.",
-    )
-    _ = parser.add_argument(
-        "-o",
-        "--output",
-        help="Write the CSV to this path. If omitted, the CSV is written to stdout.",
     )
     _ = parser.add_argument(
         "-N",
@@ -196,6 +230,26 @@ def main() -> None:
             "Disable colored output for the CSV when it's printed to stdout. Colors are "
             "also disabled automatically when stdout is not a terminal or when the "
             "NO_COLOR environment variable is set."
+        ),
+    )
+    _ = parser.add_argument(
+        "-m",
+        "--model",
+        default=categorization.DEFAULT_MODEL,
+        help=(
+            "Copilot model to use for category guessing (default: "
+            f"{categorization.DEFAULT_MODEL}). Examples: gpt-5, gpt-5-mini, "
+            "claude-sonnet-4.5."
+        ),
+    )
+    _ = parser.add_argument(
+        "-G",
+        "--no-guess",
+        action="store_true",
+        help=(
+            "Skip the GitHub Copilot call. The CSV is still written with a `category` "
+            "column, but every row's value is left blank. Useful for a quick uncategorized "
+            "export without burning model calls."
         ),
     )
     args = ExportArgs.model_validate(vars(parser.parse_args()))
@@ -217,21 +271,37 @@ def main() -> None:
     )
 
     rows = _collect_rows(matching, parser, console)
+
+    if args.no_guess:
+        console.print(
+            "Skipping category guessing (--no-guess); `category` column will be blank.",
+            highlight=False,
+        )
+    else:
+        console.print("Looking up existing categories\u2026", highlight=False)
+        categories = list(iter_categories())
+        console.print(f"Found {len(categories)} existing categor(y/ies)", highlight=False)
+
+        raw_guesses = asyncio.run(
+            categorization.guess(rows, categories, model=args.model, console=console)
+        )
+        guesses = categorization.validate(
+            raw_guesses,
+            set(categories),
+            {row.transaction_journal_id for row in rows},
+            console,
+        )
+        rows = [row._replace(category=guesses.get(row.transaction_journal_id, "")) for row in rows]
+
     rows.sort(key=_sort_key)
     console.print(f"Writing {len(rows)} row(s)", highlight=False)
 
-    if args.output is None:
-        stdout_console = Console(no_color=args.no_color)
-        if stdout_console.is_terminal and not args.no_color:
-            _write_csv_colored(rows, stdout_console)
-        else:
-            _write_csv(rows, sys.stdout)
-            _ = sys.stdout.flush()
+    stdout_console = Console(no_color=args.no_color)
+    if stdout_console.is_terminal and not args.no_color:
+        _write_csv_colored(rows, stdout_console)
     else:
-        out_path = Path(args.output)
-        with out_path.open("w", encoding="utf-8", newline="") as sink:
-            _write_csv(rows, sink)
-        console.print(f"Wrote {out_path}", highlight=False)
+        _write_csv(rows, sys.stdout)
+        _ = sys.stdout.flush()
 
 
 if __name__ == "__main__":

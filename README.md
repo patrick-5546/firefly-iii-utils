@@ -113,6 +113,15 @@ Of the templates in this repository, these ones use the inverted convention:
 - `citi_cc`
 - `bilt_cc`
 
+### GitHub Copilot CLI
+
+This is only needed for `firefly-iii-guess-categories`;
+skip this section if you don't use it.
+
+Follow the
+[official install + auth guide](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli)
+to set up the `copilot` binary.
+
 ## Usage
 
 ### `firefly-iii-import-data`
@@ -229,29 +238,38 @@ new entry's `preprocessor` field.
 
 ### `firefly-iii-guess-categories`
 
-> Export uncategorized transactions by tag prefix
+> Export uncategorized transactions by tag prefix and guess their categories
 
 Looks up every Firefly III tag whose name starts with the given prefix
 and writes a CSV of every uncategorized transaction across those tags.
-Columns: `description,amount,date,source_account,destination_account`,
-sorted ascending by `date` then by `amount`. Dates are formatted as
-`YYYY-MM-DD`.
+For each row, [GitHub Copilot CLI](https://github.com/github/copilot-cli)
+is asked (via [`github-copilot-sdk`](https://pypi.org/project/github-copilot-sdk/))
+to pick the best-fitting category from the categories that already
+exist in your Firefly III instance — any LLM pick that isn't in that
+allow-list is silently blanked and surfaced as a warning on stderr, so
+the worst case is a row with an empty `category` cell that you fill in
+by hand.
 
 ```sh
 # Print the CSV (colorized when stdout is a TTY; status / progress goes
 # to stderr):
-uv run firefly-iii-guess-categories vacation-2024
+uv run firefly-iii-guess-categories YYYY-MM-DD
 
-# Or redirect to a file (auto-detected as non-TTY -> plain CSV, no
-# escape codes):
-uv run firefly-iii-guess-categories vacation-2024 > uncategorized.csv
-
-# Write directly to a file (-o/--output):
-uv run firefly-iii-guess-categories -o uncategorized.csv vacation-2024
+# Redirect to a file (auto-detected as non-TTY -> plain CSV, no escape
+# codes):
+uv run firefly-iii-guess-categories YYYY-MM-DD > out.csv
 
 # Disable column colors for the CSV on stdout (also auto-disabled when
 # stdout isn't a TTY or when the NO_COLOR environment variable is set):
-uv run firefly-iii-guess-categories --no-color vacation-2024
+uv run firefly-iii-guess-categories --no-color YYYY-MM-DD
+
+# Override the model used for guessing (default: gpt-5-mini):
+uv run firefly-iii-guess-categories --model gpt-5.4-mini YYYY-MM-DD
+
+# Skip the LLM call entirely (writes the CSV with a blank `category`
+# column — useful for a quick uncategorized export without a model
+# call):
+uv run firefly-iii-guess-categories --no-guess YYYY-MM-DD
 ```
 
 The script does not handle split transactions or transactions that

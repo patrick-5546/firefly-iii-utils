@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from .models import (
     AccountResponse,
+    CategoryListResponse,
     TagListResponse,
     TransactionListResponse,
     TransactionSplit,
@@ -120,6 +121,32 @@ def iter_transactions_for_tag(tag: str) -> Iterator[tuple[str, list[TransactionS
         body = TransactionListResponse.model_validate(response.json())
         for entry in body.data:
             yield entry.id, entry.attributes.transactions
+        if page >= body.meta.pagination.total_pages:
+            return
+        page += 1
+
+
+def iter_categories() -> Iterator[str]:
+    """Yield every category name in the Firefly III instance, paginated.
+
+    Reads ``FIREFLY_III_URL`` / ``FIREFLY_III_PAT`` from the environment
+    (raises ``KeyError`` if either is unset). ``requests.RequestException``
+    and ``pydantic.ValidationError`` propagate so the caller can fail
+    loudly instead of silently dropping pages.
+    """
+    url, headers = _auth_context_strict()
+    page = 1
+    while True:
+        response = requests.get(
+            f"{url}/api/v1/categories",
+            headers=headers,
+            params={"limit": _PAGE_LIMIT, "page": page},
+            timeout=_TIMEOUT,
+        )
+        response.raise_for_status()
+        body = CategoryListResponse.model_validate(response.json())
+        for entry in body.data:
+            yield entry.attributes.name
         if page >= body.meta.pagination.total_pages:
             return
         page += 1
