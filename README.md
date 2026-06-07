@@ -87,6 +87,33 @@ multiple rows disagree on the account, or `default_account` is still
 `< 1` after the lookup — the script refuses to upload and prints an
 error explaining what went wrong.
 
+### Firefly III sign-flip rules
+
+Firefly III expects credits to be positive and debits negative. Some
+banks use the inverted convention, so transactions for those accounts
+need to be flipped by a pair of rules in Firefly III.
+
+Set this up as **two rules total** — one for the withdrawal direction
+and one for the deposit direction. Each rule has one trigger per
+affected account id; with **strict mode unchecked**, the rule fires
+when any trigger matches. **Stop processing must be checked**
+so that it doesn't keep bouncing between the two rules.
+
+| Rule | Trigger (one per affected account id) | Action                                  |
+| ---- | ------------------------------------- | --------------------------------------- |
+| A    | Destination account ID is exactly..   | Convert the transaction to a withdrawal |
+| B    | Source account ID is exactly..        | Convert the transaction to a deposit    |
+
+Set each affected account's Firefly III account id
+as the trigger's **Trigger on value**; with three affected accounts
+each rule will have three triggers.
+
+Of the templates in this repository, these ones use the inverted convention:
+
+- `cap1_cc`
+- `citi_cc`
+- `bilt_cc`
+
 ## Usage
 
 ### `firefly-iii-import-transactions` — upload a bank CSV via the Data Importer
@@ -162,10 +189,8 @@ Currently registered:
   only points its `amount` role at `Debit`. For every row with a value
   in `Credit`, the preprocessor moves it into `Debit` with a leading
   minus sign, so charges stay positive and payments become negative
-  within the merged column. (Note: the cap1 and chase_cc sign
-  conventions are opposite; rely on Firefly III's rule engine to flip
-  signs for the cap1 account if needed.) Rows where both `Debit` and
-  `Credit` are populated cause the upload to be refused.
+  within the merged column. Rows where both `Debit` and `Credit` are
+  populated cause the upload to be refused.
 - **`wf_acct`** — Wealthfront's cash-account CSV records internal
   transfers between the user's own Wealthfront accounts as rows where
   `Type` is `Transfer`. The preprocessor drops every such row before
@@ -174,11 +199,8 @@ Currently registered:
   for charges (positive) and `Credit` for payments / refunds (already
   negative). The importer template only points its `amount` role at
   `Debit`, so the preprocessor moves each `Credit` value into `Debit`
-  **as-is** (no negation — Citi already signed it). Rows where both
-  `Debit` and `Credit` are populated cause the upload to be refused.
-  (Note: like `cap1_cc`, citi's resulting sign convention is opposite
-  `chase_cc`'s; rely on Firefly III's rule engine to flip signs for
-  the citi account if needed.)
+  **as-is** (Citi already minus-prefixed it). Rows where both `Debit`
+  and `Credit` are populated cause the upload to be refused.
 
 To add a new bank, drop its JSON template into `configs/`, register
 it in the `TEMPLATES` dict in `src/firefly_iii_utils/paths.py` (the

@@ -9,13 +9,11 @@ def _merge_credit_into_debit(csv_bytes: bytes, *, negate: bool) -> tuple[bytes, 
     (``Debit`` for charges, ``Credit`` for payments / refunds) while
     the importer template only points its ``amount`` role at ``Debit``.
 
-    When ``negate`` is ``True`` (e.g. Capital One) the Credit value is
-    moved with a leading minus sign because Credit is positive on the
-    source side. When ``negate`` is ``False`` (e.g. Citi) the Credit
-    value is moved as-is because the source already negates it. Rows
-    that have both ``Debit`` and ``Credit`` populated cause the upload
-    to be refused. Returns the rewritten CSV bytes and a short summary
-    fragment describing what was changed.
+    When ``negate`` is ``True`` the Credit value is prepended with a
+    minus as it's moved. When ``negate`` is ``False`` the Credit value
+    is moved verbatim. Rows that have both ``Debit`` and ``Credit``
+    populated cause the upload to be refused. Returns the rewritten
+    CSV bytes and a short summary fragment describing what was changed.
     """
     text = csv_bytes.decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text))
@@ -49,30 +47,28 @@ def _merge_credit_into_debit(csv_bytes: bytes, *, negate: bool) -> tuple[bytes, 
     out = io.StringIO(newline="")
     writer = csv.writer(out)
     writer.writerows(rows)
-    suffix = "negated" if negate else "preserving sign"
+    suffix = "negated" if negate else "as-is"
     return out.getvalue().encode("utf-8"), f"moved {rewritten} credit row(s) into debit ({suffix})"
 
 
 def preprocess_cap1_cc(csv_bytes: bytes) -> tuple[bytes, str]:
     """Move every Credit value into Debit with a leading minus.
 
-    Capital One uses two positive columns (Debit for charges, Credit for
-    payments / refunds) but the importer template only points its ``amount``
-    role at Debit. Negating while merging keeps charges and payments on
-    opposite signs after the move. Returns the rewritten CSV bytes and a
-    short summary fragment describing what was changed.
+    Capital One emits two non-negative columns (Debit for charges,
+    Credit for payments / refunds), but the importer template only
+    points its ``amount`` role at Debit. Returns the rewritten CSV
+    bytes and a short summary fragment describing what was changed.
     """
     return _merge_credit_into_debit(csv_bytes, negate=True)
 
 
 def preprocess_citi_cc(csv_bytes: bytes) -> tuple[bytes, str]:
-    """Move every Credit value into Debit, preserving its (already negative) sign.
+    """Move every Credit value into Debit verbatim.
 
-    Citi puts charges in Debit (positive) and payments / refunds in Credit
-    (already negative), but the importer template only points its ``amount``
-    role at Debit. Moving the value as-is keeps the sign that the source
-    already supplied. Returns the rewritten CSV bytes and a short summary
-    fragment describing what was changed.
+    Citi emits Debit for charges and Credit (already minus-prefixed)
+    for payments / refunds, but the importer template only points its
+    ``amount`` role at Debit. Returns the rewritten CSV bytes and a
+    short summary fragment describing what was changed.
     """
     return _merge_credit_into_debit(csv_bytes, negate=False)
 
