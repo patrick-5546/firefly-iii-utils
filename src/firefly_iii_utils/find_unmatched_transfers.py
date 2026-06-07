@@ -224,6 +224,19 @@ def _signed_amount(row: Row) -> Decimal:
     return -amount if row.type == "withdrawal" else amount
 
 
+def _signed_balance(rows: list[Row]) -> Decimal:
+    """Sum :func:`_signed_amount` across ``rows``.
+
+    Deposits contribute positively (money landed without a matching
+    outgoing record), withdrawals negatively (money left without a
+    matching incoming record), so the result tells the user the net
+    direction of the unmatched set: positive means more arrived than
+    left, negative means the opposite, zero means individual pairs
+    don't line up but the totals do.
+    """
+    return sum((_signed_amount(row) for row in rows), Decimal(0))
+
+
 def _sort_key(row: Row) -> tuple[str, Decimal]:
     return row.date, _signed_amount(row)
 
@@ -446,6 +459,11 @@ def main() -> None:
         )
 
     unmatched.sort(key=_sort_key)
+    balance = _signed_balance(unmatched).quantize(Decimal("0.01"))
+    console.print(
+        f"Unmatched balance: {balance:+} (deposits − withdrawals).",
+        highlight=False,
+    )
     console.print(f"Writing {len(unmatched)} row(s)", highlight=False)
 
     emit_csv(
