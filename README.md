@@ -257,7 +257,7 @@ uv run firefly-iii-guess-categories YYYY-MM-DD
 
 # Redirect to a file (auto-detected as non-TTY -> plain CSV, no escape
 # codes):
-uv run firefly-iii-guess-categories YYYY-MM-DD > out.csv
+uv run firefly-iii-guess-categories YYYY-MM-DD > guessed.csv
 
 # Disable column colors for the CSV on stdout (also auto-disabled when
 # stdout isn't a TTY or when the NO_COLOR environment variable is set):
@@ -294,14 +294,14 @@ then `PUT`s the new category onto the matching split.
 
 ```sh
 # Validate the CSV and update every row's transaction:
-uv run firefly-iii-import-categories path/to/out.csv
+uv run firefly-iii-import-categories path/to/guessed.csv
 
 # Validate everything but skip the PUTs (no changes made):
-uv run firefly-iii-import-categories --dry-run path/to/out.csv
+uv run firefly-iii-import-categories --dry-run path/to/guessed.csv
 
 # Disable colored output (also auto-disabled when stderr isn't a TTY
 # or when the NO_COLOR environment variable is set):
-uv run firefly-iii-import-categories --no-color path/to/out.csv
+uv run firefly-iii-import-categories --no-color path/to/guessed.csv
 ```
 
 ## Development
