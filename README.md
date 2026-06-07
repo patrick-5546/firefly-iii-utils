@@ -133,6 +133,13 @@ uv run firefly-iii-import-transactions --template chase_cc path/to/Chase1234_Act
 
 # Dry run: validate inputs and print what would be sent, without making the request:
 uv run firefly-iii-import-transactions --dry-run path/to/Chase1234_Activity.CSV
+
+# Directory: process every *.csv / *.CSV file directly under the
+# directory (no recursion) in sorted order. Each file's template is
+# auto-detected per file, so --template is not allowed with a
+# directory. Processing stops on the first failure.
+uv run firefly-iii-import-transactions path/to/transactions/
+uv run firefly-iii-import-transactions --dry-run path/to/transactions/
 ```
 
 Auto-detection iterates the templates registered in

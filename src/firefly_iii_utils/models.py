@@ -70,6 +70,6 @@ TemplateDictAdapter: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, obje
 
 
 class Args(BaseModel):
-    csv_path: str
+    path: str
     template: str | None
     dry_run: bool

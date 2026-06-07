@@ -15,42 +15,24 @@ from .mappings import (
     load_account_mappings,
     load_template_detection,
 )
-from .models import Args, ImporterTemplate, TemplateDictAdapter
+from .models import Args, CardAccount, ImporterTemplate, TemplateDetectionRule, TemplateDictAdapter
 from .paths import TEMPLATES
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Upload a bank CSV to the Firefly III Data Importer's /autoupload endpoint.",
-    )
-    _ = parser.add_argument("csv_path", help="Path to the bank CSV to import.")
-    _ = parser.add_argument(
-        "-t",
-        "--template",
-        choices=sorted(TEMPLATES),
-        help=(
-            "Which JSON template under configs/ to use. If omitted, the template is "
-            "auto-detected from the CSV using the rules in configs/template_detection.json."
-        ),
-    )
-    _ = parser.add_argument(
-        "-n",
-        "--dry-run",
-        action="store_true",
-        help="Validate inputs and print what would be sent without making the request.",
-    )
-    args = Args.model_validate(vars(parser.parse_args()))
-
-    csv_path = Path(args.csv_path)
-    if not csv_path.is_file():
-        parser.error(f"CSV file not found: {csv_path}")
-
+def _process_one(
+    csv_path: Path,
+    template_arg: str | None,
+    mappings: dict[str, dict[str, CardAccount]],
+    detection_rules: dict[str, TemplateDetectionRule],
+    importer_url: str,
+    secret: str,
+    dry_run: bool,
+    parser: argparse.ArgumentParser,
+) -> None:
     csv_bytes = csv_path.read_bytes()
-    mappings = load_account_mappings()
-    detection_rules = load_template_detection()
 
     auto_detected = False
-    if args.template is None:
+    if template_arg is None:
         matches = detect_template(csv_path, csv_bytes, detection_rules)
         known = ", ".join(sorted(TEMPLATES)) or "<none>"
         if not matches:
@@ -68,15 +50,11 @@ def main():
         template_name = matches[0]
         auto_detected = True
     else:
-        template_name = args.template
+        template_name = template_arg
 
     template_path = TEMPLATES[template_name].path
     if not template_path.is_file():
         parser.error(f"Template file not found: {template_path}")
-
-    _ = load_dotenv()
-    importer_url = os.environ["DATA_IMPORTER_URL"].rstrip("/")
-    secret = os.environ["AUTO_IMPORT_SECRET"]
 
     try:
         template_dict = TemplateDictAdapter.validate_json(template_path.read_text(encoding="utf-8"))
@@ -105,7 +83,7 @@ def main():
 
     template_label = f"{template_name}{' (auto-detected)' if auto_detected else ''}"
 
-    if args.dry_run:
+    if dry_run:
         with io.BytesIO(csv_bytes) as buf:
             row_count = max(sum(1 for _ in buf) - 1, 0)
         account_label = str(template.default_account)
@@ -146,6 +124,75 @@ def main():
     except ValueError:
         print(response.text)
     response.raise_for_status()
+
+
+def _collect_csv_files(directory: Path, parser: argparse.ArgumentParser) -> list[Path]:
+    files = sorted(
+        child for child in directory.iterdir() if child.is_file() and child.suffix.lower() == ".csv"
+    )
+    if not files:
+        parser.error(f"No .csv files found in directory: {directory}")
+    return files
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Upload a bank CSV to the Firefly III Data Importer's /autoupload endpoint.",
+    )
+    _ = parser.add_argument(
+        "path",
+        help="Path to a bank CSV file, or a directory of CSV files to import.",
+    )
+    _ = parser.add_argument(
+        "-t",
+        "--template",
+        choices=sorted(TEMPLATES),
+        help=(
+            "Which JSON template under configs/ to use. If omitted, the template is "
+            "auto-detected from the CSV using the rules in configs/template_detection.json. "
+            "Not allowed when path is a directory."
+        ),
+    )
+    _ = parser.add_argument(
+        "-n",
+        "--dry-run",
+        action="store_true",
+        help="Validate inputs and print what would be sent without making the request.",
+    )
+    args = Args.model_validate(vars(parser.parse_args()))
+
+    input_path = Path(args.path)
+    if input_path.is_file():
+        csv_files = [input_path]
+    elif input_path.is_dir():
+        if args.template is not None:
+            parser.error(
+                "-t/--template is not allowed when path is a directory; "
+                + "templates are auto-detected per file."
+            )
+        csv_files = _collect_csv_files(input_path, parser)
+    else:
+        parser.error(f"Path not found: {input_path}")
+
+    mappings = load_account_mappings()
+    detection_rules = load_template_detection()
+
+    _ = load_dotenv()
+    importer_url = os.environ["DATA_IMPORTER_URL"].rstrip("/")
+    secret = os.environ["AUTO_IMPORT_SECRET"]
+
+    for csv_path in csv_files:
+        print(f"=== {csv_path.name} ===")
+        _process_one(
+            csv_path,
+            args.template,
+            mappings,
+            detection_rules,
+            importer_url,
+            secret,
+            args.dry_run,
+            parser,
+        )
 
 
 if __name__ == "__main__":
