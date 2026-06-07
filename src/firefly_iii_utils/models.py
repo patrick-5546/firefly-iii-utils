@@ -183,6 +183,7 @@ class ImportCategoriesArgs(BaseModel):
 class FindUnmatchedTransfersArgs(BaseModel):
     start: str
     end: str | None
+    reviewed: str | None
     no_color: bool
 
 

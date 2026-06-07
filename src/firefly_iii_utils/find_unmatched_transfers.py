@@ -27,9 +27,11 @@ TTY / plain when redirected, sharing
 
 import argparse
 import calendar
+import csv
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import NamedTuple
 
 from dotenv import load_dotenv
@@ -61,6 +63,8 @@ COLUMN_STYLES = (
     "blue",
     "red",
 )
+
+_TRANSACTION_ID_COL = CSV_HEADER.index("transaction_id")
 
 
 class Row(NamedTuple):
@@ -250,6 +254,72 @@ def _print_matched(
     write_csv_colored(CSV_HEADER, rows, COLUMN_STYLES, console)
 
 
+def _read_reviewed(
+    path: Path,
+    parser: argparse.ArgumentParser,
+    console: Console,
+) -> set[str]:
+    """Load a previously-emitted unmatched-transfers CSV and return its ids.
+
+    The reviewed file must use the **same header** as this script's own
+    output so the user's workflow is just "save stdout, delete rows
+    you want to re-investigate, pass the file back in". Validation
+    mirrors :func:`firefly_iii_utils.import_categories._read_csv`:
+    file-existence / read errors and any structural mismatch (missing
+    header, wrong column count, empty ``transaction_id``) all abort
+    via ``parser.error`` before any Firefly III API calls run.
+
+    Duplicate ``transaction_id`` values inside the file emit a stderr
+    warning but are deduped into a single membership entry, since a
+    set is what the strip step needs anyway.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        parser.error(f"Reviewed CSV file not found: {path}")
+    except OSError as exc:
+        parser.error(f"Could not read reviewed CSV {path}: {exc}")
+
+    reader = csv.reader(text.splitlines())
+    try:
+        header = tuple(next(reader))
+    except StopIteration:
+        parser.error(f"Reviewed CSV file is empty: {path}")
+    if header != CSV_HEADER:
+        expected = ",".join(CSV_HEADER)
+        got = ",".join(header)
+        parser.error(
+            f"Reviewed CSV header in {path.name} does not match the format produced by "
+            + "firefly-iii-find-unmatched-transfers."
+            + f"\n  expected: {expected}\n  got:      {got}"
+        )
+
+    ids: set[str] = set()
+    for row_number, raw in enumerate(reader, start=2):
+        if not raw or not any(cell.strip() for cell in raw):
+            continue
+        if len(raw) != len(CSV_HEADER):
+            parser.error(
+                f"Reviewed CSV row {row_number} in {path.name} has {len(raw)} column(s); "
+                + f"expected {len(CSV_HEADER)}."
+            )
+        tx_id = raw[_TRANSACTION_ID_COL].strip()
+        if not tx_id:
+            parser.error(
+                f"Reviewed CSV row {row_number} in {path.name} has an empty transaction_id."
+            )
+        if tx_id in ids:
+            console.print(
+                f"warning: reviewed CSV row {row_number} repeats transaction_id "
+                + f"{tx_id!r}; treating as a single entry.",
+                style="yellow",
+                highlight=False,
+            )
+            continue
+        ids.add(tx_id)
+    return ids
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
@@ -275,6 +345,19 @@ def main() -> None:
             "Optional end month (inclusive), formatted YYYY-MM. Defaults to START so "
             "that a single positional argument selects exactly that month. Must be "
             ">= START."
+        ),
+    )
+    _ = parser.add_argument(
+        "-r",
+        "--reviewed",
+        default=None,
+        help=(
+            "Path to a CSV produced by a previous run of this script. Any row whose "
+            "transaction_id is in that file is stripped from the unmatched output. The "
+            "header must match the script's own output exactly; stripping happens after "
+            "pairing, so a previously-orphan transaction that now has a counterpart "
+            "pairs off as normal and never reaches the strip step. Reviewed ids that "
+            "aren't in the current unmatched output emit a one-line stderr note."
         ),
     )
     _ = parser.add_argument(
@@ -339,6 +422,28 @@ def main() -> None:
         highlight=False,
     )
     _print_matched(matched, console)
+
+    if args.reviewed is not None:
+        reviewed_ids = _read_reviewed(Path(args.reviewed), parser, console)
+        console.print(
+            f"\nLoaded {len(reviewed_ids)} reviewed transaction id(s) from "
+            + f"{args.reviewed!r}.",
+            highlight=False,
+        )
+        current_ids = {row.transaction_journal_id for row in unmatched}
+        for stale in sorted(reviewed_ids - current_ids):
+            console.print(
+                f"reviewed id {stale!r} no longer in unmatched output",
+                style="yellow",
+                highlight=False,
+            )
+        before = len(unmatched)
+        unmatched = [row for row in unmatched if row.transaction_journal_id not in reviewed_ids]
+        console.print(
+            f"Stripped {before - len(unmatched)} reviewed row(s); "
+            + f"{len(unmatched)} remaining.",
+            highlight=False,
+        )
 
     unmatched.sort(key=_sort_key)
     console.print(f"Writing {len(unmatched)} row(s)", highlight=False)

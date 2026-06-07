@@ -329,8 +329,15 @@ uv run firefly-iii-find-unmatched-transfers 2026-01 2026-06
 # codes):
 uv run firefly-iii-find-unmatched-transfers 2026-06 > unmatched.csv
 
-# Disable column colors for the CSV on stdout (also auto-disabled when
-# stdout isn't a TTY or when the NO_COLOR environment variable is set):
+# Carry a previous review forward: re-run with --reviewed pointed at
+# the saved output (after deleting any rows you still want to
+# re-investigate); any row whose transaction_id is in that file is
+# stripped from the new output.
+uv run firefly-iii-find-unmatched-transfers --reviewed unmatched.csv 2026-01 2026-06 > unmatched_v2.csv
+
+# Disable column colors for the CSVs on stdout and the matched-pairs
+# CSV on stderr (also auto-disabled when the respective stream isn't
+# a TTY or when the NO_COLOR environment variable is set):
 uv run firefly-iii-find-unmatched-transfers --no-color 2026-06
 ```
 
