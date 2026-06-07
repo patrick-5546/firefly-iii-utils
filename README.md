@@ -355,6 +355,37 @@ them atomically and they don't need a counterpart. As with
 `firefly-iii-guess-categories`, the script errors out if any
 transaction in the category has more than one split.
 
+### `firefly-iii-sum-budget-diffs`
+
+> Sum monthly budget differences across a calendar year
+
+For a given year, fetches every monthly budget limit and the spending
+attributed to it, computes `budgeted - spent` for each month, and
+emits a CSV on stdout with one row per kept month plus a final
+`total` row. Months where either the budgeted or the spent total is 0
+are skipped, on the assumption that those are future months or months
+whose transactions have not yet been imported.
+
+```sh
+# Current calendar year, USD, colored on TTY:
+uv run firefly-iii-sum-budget-diffs
+
+# Explicit year:
+uv run firefly-iii-sum-budget-diffs 2026
+
+# Override the currency (must match every returned budget limit and
+# every entry in its spent[] array; mismatches cause a hard error):
+uv run firefly-iii-sum-budget-diffs --currency EUR 2026
+
+# Redirect to a file (auto-detected as non-TTY -> plain CSV, no escape
+# codes):
+uv run firefly-iii-sum-budget-diffs 2026 > budget-diffs.csv
+
+# Disable column colors explicitly (also auto-disabled when stdout
+# isn't a TTY or when the NO_COLOR environment variable is set):
+uv run firefly-iii-sum-budget-diffs --no-color 2026
+```
+
 ### `firefly-iii-compare-guesses`
 
 > Compare per-model category guesses against a golden CSV

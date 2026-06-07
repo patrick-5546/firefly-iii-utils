@@ -191,3 +191,54 @@ class CompareGuessesArgs(BaseModel):
     path: str
     top_confusions: int = Field(ge=1)
     no_color: bool
+
+
+class CurrencySumEntry(BaseModel):
+    """One entry in a Firefly III per-currency sum array.
+
+    Mirrors the ``ArrayEntryWithCurrencyAndSum`` schema used by budget
+    limits (and other models) to report amounts split across currencies.
+    ``extra="ignore"`` drops the optional symbol / decimal-places /
+    currency_id fields that the script does not need so a schema bump
+    cannot break the model.
+    """
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+
+    currency_code: str
+    sum: str
+
+
+class BudgetLimitAttrs(BaseModel):
+    """Subset of the Firefly III BudgetLimit schema used by sum-budget-diffs.
+
+    ``start`` / ``end`` are ISO 8601 date-times; the script parses them
+    via :func:`firefly_iii_utils.parsing.parse_date` and enforces that
+    each limit's range falls within a single calendar month.
+    ``extra="ignore"`` matches the convention used by
+    :class:`TransactionSplit`.
+    """
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+
+    start: str
+    end: str
+    amount: str
+    currency_code: str
+    spent: list[CurrencySumEntry] = []
+
+
+class BudgetLimitData(BaseModel):
+    id: str
+    attributes: BudgetLimitAttrs
+
+
+class BudgetLimitListResponse(BaseModel):
+    data: list[BudgetLimitData]
+    meta: Meta
+
+
+class SumBudgetDiffsArgs(BaseModel):
+    year: int = Field(ge=1900, le=9999)
+    currency: str
+    no_color: bool

@@ -8,6 +8,8 @@ from pydantic import ValidationError
 from .models import (
     AccountResponse,
     AutocompleteCategoryListAdapter,
+    BudgetLimitData,
+    BudgetLimitListResponse,
     CategoryListResponse,
     TagListResponse,
     TransactionListResponse,
@@ -269,6 +271,38 @@ def iter_transactions_for_category(
         body = TransactionListResponse.model_validate(response.json())
         for entry in body.data:
             yield entry.id, entry.attributes.transactions
+        if page >= body.meta.pagination.total_pages:
+            return
+        page += 1
+
+
+def iter_budget_limits(*, start: str, end: str) -> Iterator[BudgetLimitData]:
+    """Yield every budget limit returned by ``GET /api/v1/budget-limits``.
+
+    Both ``start`` and ``end`` (``YYYY-MM-DD``, inclusive) are required
+    by the Firefly III endpoint. The endpoint returns every budget
+    limit whose own date range overlaps the query range, with each
+    limit's own ``amount`` (the budgeted figure) and ``spent`` array
+    (per-currency totals attributed to that limit). Pagination, auth,
+    and error propagation mirror :func:`iter_transactions_for_category`.
+    """
+    url, headers = _auth_context_strict()
+    page = 1
+    while True:
+        response = requests.get(
+            f"{url}/api/v1/budget-limits",
+            headers=headers,
+            params={
+                "limit": _PAGE_LIMIT,
+                "page": page,
+                "start": start,
+                "end": end,
+            },
+            timeout=_TIMEOUT,
+        )
+        response.raise_for_status()
+        body = BudgetLimitListResponse.model_validate(response.json())
+        yield from body.data
         if page >= body.meta.pagination.total_pages:
             return
         page += 1
