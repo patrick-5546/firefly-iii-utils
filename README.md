@@ -334,3 +334,8 @@ To run all hooks against all files on demand:
 ```sh
 uv run prek run --all-files
 ```
+
+## Resources
+
+- [Firefly III documentation](https://github.com/firefly-iii/docs)
+- [Firefly III API documentation](https://github.com/firefly-iii/api-docs)
