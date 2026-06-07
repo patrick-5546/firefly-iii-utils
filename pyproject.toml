@@ -20,6 +20,7 @@ firefly-iii-import-data = "firefly_iii_utils.import_data:main"
 firefly-iii-guess-categories = "firefly_iii_utils.guess_categories:main"
 firefly-iii-import-categories = "firefly_iii_utils.import_categories:main"
 firefly-iii-find-unmatched-transfers = "firefly_iii_utils.find_unmatched_transfers:main"
+firefly-iii-compare-guesses = "firefly_iii_utils.compare_guesses:main"
 
 [dependency-groups]
 dev = [

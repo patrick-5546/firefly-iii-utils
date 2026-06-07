@@ -184,3 +184,9 @@ class FindUnmatchedTransfersArgs(BaseModel):
     start: str
     end: str | None
     no_color: bool
+
+
+class CompareGuessesArgs(BaseModel):
+    path: str
+    top_confusions: int = Field(ge=1)
+    no_color: bool

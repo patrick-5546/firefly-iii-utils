@@ -348,6 +348,37 @@ them atomically and they don't need a counterpart. As with
 `firefly-iii-guess-categories`, the script errors out if any
 transaction in the category has more than one split.
 
+### `firefly-iii-compare-guesses`
+
+> Compare per-model category guesses against a golden CSV
+
+Auto-discovers `guessed.golden.csv` and every other `guessed.*.csv`
+file in the given directory (cwd by default), then prints
+human-readable accuracy stats to stdout: overall accuracy per
+model, per-category accuracy (golden category vs each model's
+pick), top-N confusions per model, and pairwise inter-model
+agreement.
+
+```sh
+# Compare every guessed.*.csv in the current directory against
+# guessed.golden.csv (tables are colored when stdout is a TTY):
+uv run firefly-iii-compare-guesses
+
+# Same, against CSVs in a different directory:
+uv run firefly-iii-compare-guesses path/to/exports/
+
+# Show more / fewer top-N confusions per model (default 8):
+uv run firefly-iii-compare-guesses --top-confusions 15
+
+# Redirect to a file (auto-detected as non-TTY -> plain output, no
+# escape codes):
+uv run firefly-iii-compare-guesses > stats.txt
+
+# Disable colors explicitly (also auto-disabled when stdout isn't
+# a TTY or when the NO_COLOR environment variable is set):
+uv run firefly-iii-compare-guesses --no-color
+```
+
 ## Development
 
 This project is managed with [uv](https://docs.astral.sh/uv/).
