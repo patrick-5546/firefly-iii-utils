@@ -17,7 +17,14 @@ from .mappings import (
     load_template_detection,
 )
 from .models import Args, CardAccount, ImporterTemplate, TemplateDetectionRule, TemplateDictAdapter
-from .output import make_console, print_header, print_response
+from .output import (
+    Counts,
+    make_console,
+    make_progress,
+    print_aggregate,
+    print_header,
+    print_response,
+)
 from .paths import TEMPLATES
 
 
@@ -31,7 +38,7 @@ def _process_one(
     dry_run: bool,
     parser: argparse.ArgumentParser,
     console: Console,
-) -> None:
+) -> Counts | None:
     csv_bytes = csv_path.read_bytes()
 
     auto_detected = False
@@ -109,7 +116,7 @@ def _process_one(
         print(f"  importable: {csv_path} ({size_label}, {row_count} data rows)")
         if preprocessing_summary is not None:
             print(f"    preprocessing:   {preprocessing_summary}")
-        return
+        return None
 
     print(f"template: {template_label}")
     response = requests.post(
@@ -122,13 +129,15 @@ def _process_one(
         timeout=120,
     )
 
+    counts: Counts | None = None
     try:
         body_json = json.dumps(response.json())
     except ValueError:
-        print_response(console, response.text)
+        counts = print_response(console, response.text)
     else:
         console.print_json(body_json)
     response.raise_for_status()
+    return counts
 
 
 def _collect_csv_files(directory: Path, parser: argparse.ArgumentParser) -> list[Path]:
@@ -197,19 +206,34 @@ def main():
 
     console = make_console(args.no_color)
 
-    for csv_path in csv_files:
-        print_header(console, csv_path.name)
-        _process_one(
-            csv_path,
-            args.template,
-            mappings,
-            detection_rules,
-            importer_url,
-            secret,
-            args.dry_run,
-            parser,
-            console,
-        )
+    show_progress = input_path.is_dir() and not args.dry_run
+    totals = Counts()
+    processed_files = 0
+
+    progress = make_progress(console, disable=not show_progress)
+    with progress:
+        task = progress.add_task("Importing", total=len(csv_files))
+        for csv_path in csv_files:
+            progress.update(task, description=f"Importing {csv_path.name}")
+            print_header(console, csv_path.name)
+            per_file = _process_one(
+                csv_path,
+                args.template,
+                mappings,
+                detection_rules,
+                importer_url,
+                secret,
+                args.dry_run,
+                parser,
+                console,
+            )
+            processed_files += 1
+            if per_file is not None:
+                totals += per_file
+            progress.advance(task)
+
+    if show_progress and processed_files > 0:
+        print_aggregate(console, processed_files, totals)
 
 
 if __name__ == "__main__":
