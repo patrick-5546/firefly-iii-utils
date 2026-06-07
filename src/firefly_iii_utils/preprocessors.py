@@ -56,8 +56,7 @@ def preprocess_cap1_cc(csv_bytes: bytes) -> tuple[bytes, str]:
 
     Capital One emits two non-negative columns (Debit for charges,
     Credit for payments / refunds), but the importer template only
-    points its ``amount`` role at Debit. Returns the rewritten CSV
-    bytes and a short summary fragment describing what was changed.
+    points its ``amount`` role at Debit.
     """
     return _merge_credit_into_debit(csv_bytes, negate=True)
 
@@ -67,8 +66,7 @@ def preprocess_citi_cc(csv_bytes: bytes) -> tuple[bytes, str]:
 
     Citi emits Debit for charges and Credit (already minus-prefixed)
     for payments / refunds, but the importer template only points its
-    ``amount`` role at Debit. Returns the rewritten CSV bytes and a
-    short summary fragment describing what was changed.
+    ``amount`` role at Debit.
     """
     return _merge_credit_into_debit(csv_bytes, negate=False)
 
@@ -79,8 +77,7 @@ def preprocess_wf_acct(csv_bytes: bytes) -> tuple[bytes, str]:
     Wealthfront's cash-account CSV records internal transfers between the
     user's own Wealthfront accounts as ``Type == "Transfer"`` rows. The
     preprocessor removes them so they aren't imported as standalone
-    deposits / withdrawals. Returns the rewritten CSV bytes and a short
-    summary fragment describing how many rows were dropped.
+    deposits / withdrawals.
     """
     csv_bytes, removed = _drop_rows_where_column_equals(csv_bytes, column="Type", value="Transfer")
     return csv_bytes, f"removed {removed} transfer row(s)"

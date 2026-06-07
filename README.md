@@ -4,7 +4,7 @@ Scripts for working with [Firefly III](https://www.firefly-iii.org/).
 
 ## Setup
 
-### Data Importer setup
+### Data Importer configuration
 
 The `/autoupload` endpoint on the
 [Firefly III Data Importer](https://github.com/firefly-iii/data-importer)
@@ -66,11 +66,9 @@ Schema:
 
 For each upload, the script:
 
-1. Resolves the template's detection rule (the `filename_pattern` or
-   `csv_column_header` set on its `TemplateInfo` in
-   `src/firefly_iii_utils/paths.py`; see the "Template detection rules"
-   subsection under Usage for how those fields produce lookup keys) to
-   a key — or set of keys for `csv_column_header`.
+1. Resolves the template's detection rule (its `filename_pattern` or
+   `csv_column_header`; see *Template detection rules* below) to a key
+   — or set of keys for `csv_column_header`.
 2. Looks the key(s) up under the template's entry in
    `account_mappings.json` and uses the matched `account_id` as the
    template's `default_account` before sending to the importer.
@@ -82,10 +80,11 @@ For each upload, the script:
    banks where there is nothing to disambiguate.
 
 If the lookup fails — filename doesn't match, captured key isn't in
-the template's per-account dict, a CSV row has an unknown key,
-multiple rows disagree on the account, or `default_account` is still
-`< 1` after the lookup — the script refuses to upload and prints an
-error explaining what went wrong.
+the template's per-account dict, no CSV row populates the lookup
+column, a CSV row has an unknown key, multiple rows disagree on the
+account, or `default_account` is still `< 1` after the lookup — the
+script refuses to upload and prints an error explaining what went
+wrong.
 
 ### Firefly III sign-flip rules
 
@@ -122,13 +121,11 @@ Uploads a CSV plus a JSON template from `configs/` to the importer's
 `/autoupload` endpoint, replicating the manual file-upload wizard.
 
 ```sh
-# Template is auto-detected from the filename_pattern / csv_column_header
-# fields on each TemplateInfo in TEMPLATES (src/firefly_iii_utils/paths.py):
+# Template auto-detected from filename or CSV column header (see below):
 uv run firefly-iii-import-transactions path/to/Chase1234_Activity.CSV
 uv run firefly-iii-import-transactions path/to/2026-06-06_transaction_download.csv
 
-# Explicit template (overrides auto-detection; must match a key in
-# TEMPLATES inside src/firefly_iii_utils/paths.py):
+# Explicit template (overrides auto-detection; must be a key in TEMPLATES):
 uv run firefly-iii-import-transactions --template chase_cc path/to/Chase1234_Activity.CSV
 
 # Dry run: validate inputs and print what would be sent, without making the request:
@@ -156,11 +153,10 @@ you to pass `-t/--template`.
 
 #### Template detection rules (`filename_pattern` / `csv_column_header`)
 
-Each `TemplateInfo` in `TEMPLATES` (in `src/firefly_iii_utils/paths.py`)
-may set **at most one** of two optional fields to identify which
-account a CSV belongs to. The same field drives both auto-detection
-(which template to use) and account-mapping lookup (which Firefly III
-account id to post to):
+Each `TemplateInfo` in `TEMPLATES` may set **at most one** of two
+optional fields to identify which account a CSV belongs to. The same
+field drives both auto-detection (which template to use) and
+account-mapping lookup (which Firefly III account id to post to):
 
 - `filename_pattern` — a regex with one capture group, applied to the CSV
   filename. The captured value is the lookup key into
@@ -194,10 +190,10 @@ TEMPLATES: dict[str, TemplateInfo] = {
 
 Some banks emit CSVs that don't match the importer template's column
 shape and need a small transformation before upload. Each `TemplateInfo`
-in `TEMPLATES` (in `src/firefly_iii_utils/paths.py`) has an optional
-`preprocessor` field; when it's set, the CSV is parsed, rewritten in
-memory, and the transformed bytes are uploaded (the original file on
-disk is never modified). The preprocessor functions themselves live in
+in `TEMPLATES` has an optional `preprocessor` field; when it's set,
+the CSV is parsed, rewritten in memory, and the transformed bytes are
+uploaded (the original file on disk is never modified). The
+preprocessor functions themselves live in
 `src/firefly_iii_utils/preprocessors.py`.
 
 Currently registered:
@@ -217,8 +213,8 @@ Currently registered:
   for charges (positive) and `Credit` for payments / refunds (already
   negative). The importer template only points its `amount` role at
   `Debit`, so the preprocessor moves each `Credit` value into `Debit`
-  **as-is** (Citi already minus-prefixed it). Rows where both `Debit`
-  and `Credit` are populated cause the upload to be refused.
+  **as-is** (Citi already minus-prefixed it). As with `cap1_cc`, rows
+  with both columns populated cause the upload to be refused.
 
 To add a new bank, drop its JSON template into `configs/`, register
 it in the `TEMPLATES` dict in `src/firefly_iii_utils/paths.py` (the
@@ -231,12 +227,19 @@ new entry's `preprocessor` field.
 
 ## Development
 
-This project is managed with [uv](https://docs.astral.sh/uv/). Sync the
-environment, including dev tools and an editable install of the
-`firefly-iii-utils` package itself, with:
+This project is managed with [uv](https://docs.astral.sh/uv/).
+Add a runtime dependency or a dev-only one:
 
 ```sh
-uv sync
+uv add <package>
+uv add --dev <package>
+```
+
+Upgrade all dependencies to the latest versions allowed by
+`pyproject.toml`, refreshing `uv.lock`:
+
+```sh
+uv sync --upgrade
 ```
 
 Git hooks are managed with [prek](https://github.com/j178/prek), a drop-in

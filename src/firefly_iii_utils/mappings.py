@@ -21,11 +21,9 @@ def detect_template(
 ) -> list[str]:
     """Return all template names whose detection rule matches the CSV.
 
-    Iterates the templates registered in ``TEMPLATES`` and, for each one
-    that has a ``filename_pattern`` or ``csv_column_header`` set on its
-    ``TemplateInfo``, checks whether the pattern matches the CSV filename
-    or the column header is present in the CSV's header row. Templates
-    with neither field set are silently skipped.
+    Each template's ``filename_pattern`` is matched against the filename;
+    ``csv_column_header`` is checked for presence in the CSV header.
+    Templates with neither set are skipped.
     """
     header: list[str] | None = None
     matches: list[str] = []
