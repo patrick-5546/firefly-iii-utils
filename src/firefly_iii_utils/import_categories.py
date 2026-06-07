@@ -15,6 +15,7 @@ from .api import (
 )
 from .guess_categories import CSV_HEADER
 from .models import ImportCategoriesArgs
+from .output import make_progress
 
 _JOURNAL_ID_COL = CSV_HEADER.index("transaction_id")
 _CATEGORY_COL = CSV_HEADER.index("category")
@@ -138,39 +139,43 @@ def _validate_rows(
             f"Looking up {len(cat_ready)} transaction journal(s)\u2026",
             highlight=False,
         )
-    for row in cat_ready:
-        try:
-            result = get_transaction_journal(row.transaction_journal_id)
-        except HTTPError as exc:
-            state_errors.append(
-                f"row {row.csv_row_number}: lookup of transaction_id="
-                + f"{row.transaction_journal_id!r} failed: {exc}"
-            )
-            continue
-        if result is None:
-            state_errors.append(
-                f"row {row.csv_row_number}: no transaction journal found with "
-                + f"id {row.transaction_journal_id!r}"
-            )
-            continue
-        group_id, splits = result
-        if len(splits) != 1:
-            state_errors.append(
-                f"row {row.csv_row_number}: transaction_id="
-                + f"{row.transaction_journal_id!r} belongs to a group with "
-                + f"{len(splits)} splits; this script only handles single-split "
-                + "transactions (matching firefly-iii-guess-categories)"
-            )
-            continue
-        split = splits[0]
-        if split.category_id is not None:
-            label = repr(split.category_name) if split.category_name else f"id {split.category_id}"
-            state_errors.append(
-                f"row {row.csv_row_number}: transaction_id="
-                + f"{row.transaction_journal_id!r} already has category {label}"
-            )
-            continue
-        valid.append(_Validated(row=row, group_id=group_id))
+    progress = make_progress(console)
+    with progress:
+        for row in progress.track(cat_ready, description="Looking up transaction journals"):
+            try:
+                result = get_transaction_journal(row.transaction_journal_id)
+            except HTTPError as exc:
+                state_errors.append(
+                    f"row {row.csv_row_number}: lookup of transaction_id="
+                    + f"{row.transaction_journal_id!r} failed: {exc}"
+                )
+                continue
+            if result is None:
+                state_errors.append(
+                    f"row {row.csv_row_number}: no transaction journal found with "
+                    + f"id {row.transaction_journal_id!r}"
+                )
+                continue
+            group_id, splits = result
+            if len(splits) != 1:
+                state_errors.append(
+                    f"row {row.csv_row_number}: transaction_id="
+                    + f"{row.transaction_journal_id!r} belongs to a group with "
+                    + f"{len(splits)} splits; this script only handles single-split "
+                    + "transactions (matching firefly-iii-guess-categories)"
+                )
+                continue
+            split = splits[0]
+            if split.category_id is not None:
+                label = (
+                    repr(split.category_name) if split.category_name else f"id {split.category_id}"
+                )
+                state_errors.append(
+                    f"row {row.csv_row_number}: transaction_id="
+                    + f"{row.transaction_journal_id!r} already has category {label}"
+                )
+                continue
+            valid.append(_Validated(row=row, group_id=group_id))
 
     errors = csv_errors + category_errors + state_errors
     if errors:
@@ -213,28 +218,30 @@ def _apply_updates(valid: list[_Validated], console: Console) -> int:
     """
     failures = 0
     console.print(f"\nUpdating {len(valid)} transaction(s)\u2026", highlight=False)
-    for v in valid:
-        try:
-            update_transaction_category(
-                v.group_id,
-                v.row.transaction_journal_id,
-                v.row.category,
-            )
-        except HTTPError as exc:
-            failures += 1
+    progress = make_progress(console)
+    with progress:
+        for v in progress.track(valid, description="Updating transactions"):
+            try:
+                update_transaction_category(
+                    v.group_id,
+                    v.row.transaction_journal_id,
+                    v.row.category,
+                )
+            except HTTPError as exc:
+                failures += 1
+                console.print(
+                    f"  FAIL row {v.row.csv_row_number}: transaction_id="
+                    + f"{v.row.transaction_journal_id} -> {v.row.category!r}: {exc}",
+                    style="red",
+                    highlight=False,
+                )
+                continue
             console.print(
-                f"  FAIL row {v.row.csv_row_number}: transaction_id="
-                + f"{v.row.transaction_journal_id} -> {v.row.category!r}: {exc}",
-                style="red",
+                f"  OK   row {v.row.csv_row_number}: transaction_id="
+                + f"{v.row.transaction_journal_id} -> {v.row.category!r}",
+                style="green",
                 highlight=False,
             )
-            continue
-        console.print(
-            f"  OK   row {v.row.csv_row_number}: transaction_id="
-            + f"{v.row.transaction_journal_id} -> {v.row.category!r}",
-            style="green",
-            highlight=False,
-        )
     return failures
 
 
