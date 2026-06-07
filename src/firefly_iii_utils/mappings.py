@@ -7,51 +7,40 @@ from pathlib import Path
 from .models import (
     AccountMappingsAdapter,
     CardAccount,
-    TemplateDetectionAdapter,
-    TemplateDetectionRule,
 )
-from .paths import ACCOUNT_MAPPINGS_PATH, TEMPLATE_DETECTION_PATH, TEMPLATES
+from .paths import ACCOUNT_MAPPINGS_PATH, TEMPLATES
 
 
 def load_account_mappings() -> dict[str, dict[str, CardAccount]]:
     return AccountMappingsAdapter.validate_json(ACCOUNT_MAPPINGS_PATH.read_text(encoding="utf-8"))
 
 
-def load_template_detection() -> dict[str, TemplateDetectionRule]:
-    return TemplateDetectionAdapter.validate_json(
-        TEMPLATE_DETECTION_PATH.read_text(encoding="utf-8")
-    )
-
-
 def detect_template(
     csv_path: Path,
     csv_bytes: bytes,
-    detection_rules: dict[str, TemplateDetectionRule],
 ) -> list[str]:
     """Return all template names whose detection rule matches the CSV.
 
     Iterates the templates registered in ``TEMPLATES`` and, for each one
-    that has a rule in ``configs/template_detection.json``, checks
-    whether its ``filename_pattern`` matches the CSV filename or its
-    ``csv_column_header`` is present in the CSV's header row. Templates
-    without a detection rule are silently skipped.
+    that has a ``filename_pattern`` or ``csv_column_header`` set on its
+    ``TemplateInfo``, checks whether the pattern matches the CSV filename
+    or the column header is present in the CSV's header row. Templates
+    with neither field set are silently skipped.
     """
     header: list[str] | None = None
     matches: list[str] = []
-    for name in TEMPLATES:
-        rule = detection_rules.get(name)
-        if rule is None:
-            continue
-        if rule.filename_pattern is not None:
-            if re.search(rule.filename_pattern, csv_path.name) is not None:
+    for name, info in TEMPLATES.items():
+        if info.filename_pattern is not None:
+            if re.search(info.filename_pattern, csv_path.name) is not None:
                 matches.append(name)
             continue
-        assert rule.csv_column_header is not None
+        if info.csv_column_header is None:
+            continue
         if header is None:
             reader = csv.reader(io.StringIO(csv_bytes.decode("utf-8-sig")))
             empty: list[str] = []
             header = next(reader, empty)
-        if rule.csv_column_header in header:
+        if info.csv_column_header in header:
             matches.append(name)
     return matches
 
@@ -68,7 +57,7 @@ def _resolve_account_from_filename(
         parser.error(
             f"CSV filename {csv_path.name!r} does not match the filename_pattern "
             + f"{filename_pattern!r} configured for template {template_name!r} in "
-            + "configs/template_detection.json"
+            + "src/firefly_iii_utils/paths.py"
         )
     key = match.group(1)
     account = accounts.get(key)
@@ -99,7 +88,7 @@ def _resolve_account_from_csv(
         available = ", ".join(fieldnames or []) or "<none>"
         parser.error(
             f"CSV {csv_path.name!r} has no column named {csv_column_header!r} (configured "
-            + f"for template {template_name!r} in configs/template_detection.json; "
+            + f"for template {template_name!r} in src/firefly_iii_utils/paths.py; "
             + f"available columns: {available})"
         )
     seen: dict[str, CardAccount] = {}
@@ -144,7 +133,6 @@ def apply_template_overrides(
     csv_path: Path,
     csv_bytes: bytes,
     mappings: dict[str, dict[str, CardAccount]],
-    detection_rules: dict[str, TemplateDetectionRule],
     parser: argparse.ArgumentParser,
 ) -> str | None:
     """Apply mapping overrides to ``template`` in place.
@@ -155,21 +143,20 @@ def apply_template_overrides(
     accounts = mappings.get(template_name)
     if accounts is None:
         return None
-    rule = detection_rules.get(template_name)
-    if rule is None:
-        parser.error(
-            f"Template {template_name!r} has per-account mappings in "
-            + "configs/account_mappings.json but no detection rule in "
-            + "configs/template_detection.json; cannot resolve account."
-        )
-    if rule.filename_pattern is not None:
+    info = TEMPLATES[template_name]
+    if info.filename_pattern is not None:
         account, summary = _resolve_account_from_filename(
-            rule.filename_pattern, accounts, csv_path, template_name, parser
+            info.filename_pattern, accounts, csv_path, template_name, parser
+        )
+    elif info.csv_column_header is not None:
+        account, summary = _resolve_account_from_csv(
+            info.csv_column_header, accounts, csv_path, csv_bytes, template_name, parser
         )
     else:
-        assert rule.csv_column_header is not None
-        account, summary = _resolve_account_from_csv(
-            rule.csv_column_header, accounts, csv_path, csv_bytes, template_name, parser
+        parser.error(
+            f"Template {template_name!r} has per-account mappings in "
+            + "configs/account_mappings.json but no filename_pattern or csv_column_header "
+            + "on its TemplateInfo in src/firefly_iii_utils/paths.py; cannot resolve account."
         )
     template["default_account"] = account.account_id
     if account.abbreviation:

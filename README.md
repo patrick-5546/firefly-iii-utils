@@ -66,11 +66,11 @@ Schema:
 
 For each upload, the script:
 
-1. Resolves the template's lookup source (from
-   `configs/template_detection.json`; see the "Template detection
-   rules" subsection under Usage for how `filename_pattern` and
-   `csv_column_header` produce lookup keys) to a key — or set of keys
-   for `csv_column_header`.
+1. Resolves the template's detection rule (the `filename_pattern` or
+   `csv_column_header` set on its `TemplateInfo` in
+   `src/firefly_iii_utils/paths.py`; see the "Template detection rules"
+   subsection under Usage for how those fields produce lookup keys) to
+   a key — or set of keys for `csv_column_header`.
 2. Looks the key(s) up under the template's entry in
    `account_mappings.json` and uses the matched `account_id` as the
    template's `default_account` before sending to the importer.
@@ -122,8 +122,8 @@ Uploads a CSV plus a JSON template from `configs/` to the importer's
 `/autoupload` endpoint, replicating the manual file-upload wizard.
 
 ```sh
-# Template is auto-detected from configs/template_detection.json
-# (filename pattern or CSV column header):
+# Template is auto-detected from the filename_pattern / csv_column_header
+# fields on each TemplateInfo in TEMPLATES (src/firefly_iii_utils/paths.py):
 uv run firefly-iii-import-transactions path/to/Chase1234_Activity.CSV
 uv run firefly-iii-import-transactions path/to/2026-06-06_transaction_download.csv
 
@@ -148,16 +148,17 @@ uv run firefly-iii-import-transactions --no-color path/to/transactions/
 
 Auto-detection iterates the templates registered in
 `src/firefly_iii_utils/paths.py`'s `TEMPLATES` dict and, for each one
-that has a rule in `configs/template_detection.json`, checks whether
-its `filename_pattern` matches the CSV filename or its
-`csv_column_header` is present in the CSV's header row. If zero
+that has a `filename_pattern` or `csv_column_header` set on its
+`TemplateInfo`, checks whether the pattern matches the CSV filename or
+the column header is present in the CSV's header row. If zero
 templates match — or more than one — the script errors out and asks
 you to pass `-t/--template`.
 
-#### Template detection rules (`configs/template_detection.json`)
+#### Template detection rules (`filename_pattern` / `csv_column_header`)
 
-Each entry uses **exactly one** of two lookup sources to identify which
-account a CSV belongs to. The same rule drives both auto-detection
+Each `TemplateInfo` in `TEMPLATES` (in `src/firefly_iii_utils/paths.py`)
+may set **at most one** of two optional fields to identify which
+account a CSV belongs to. The same field drives both auto-detection
 (which template to use) and account-mapping lookup (which Firefly III
 account id to post to):
 
@@ -174,12 +175,18 @@ account id to post to):
   card numbers may legitimately point to the same account (e.g. a primary
   card plus an authorized user).
 
-Schema:
+Example:
 
-```json
-{
-  "<template_name>": { "filename_pattern": "Bank(\\d{4})_" },
-  "<other_template>": { "csv_column_header": "Card No." }
+```python
+TEMPLATES: dict[str, TemplateInfo] = {
+    "<template_name>": TemplateInfo(
+        path=CONFIGS_DIR / "<template_name>.json",
+        filename_pattern=r"Bank(\d{4})_",
+    ),
+    "<other_template>": TemplateInfo(
+        path=CONFIGS_DIR / "<other_template>.json",
+        csv_column_header="Card No.",
+    ),
 }
 ```
 
@@ -215,13 +222,12 @@ Currently registered:
 
 To add a new bank, drop its JSON template into `configs/`, register
 it in the `TEMPLATES` dict in `src/firefly_iii_utils/paths.py` (the
-path and optionally a preprocessor), add a `filename_pattern` or
-`csv_column_header` rule for it to `configs/template_detection.json`,
-add the per-account `account_id` and `abbreviation` entries under
-that template's key in `configs/account_mappings.json`, and (if the
-CSV format needs reshaping) add a preprocessor function to
-`src/firefly_iii_utils/preprocessors.py` and wire it through the new
-entry's `preprocessor` field.
+path, a `filename_pattern` or `csv_column_header`, and optionally a
+preprocessor), add the per-account `account_id` and `abbreviation`
+entries under that template's key in `configs/account_mappings.json`,
+and (if the CSV format needs reshaping) add a preprocessor function
+to `src/firefly_iii_utils/preprocessors.py` and wire it through the
+new entry's `preprocessor` field.
 
 ## Development
 

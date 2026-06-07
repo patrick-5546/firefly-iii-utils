@@ -14,9 +14,8 @@ from .mappings import (
     apply_template_overrides,
     detect_template,
     load_account_mappings,
-    load_template_detection,
 )
-from .models import Args, CardAccount, ImporterTemplate, TemplateDetectionRule, TemplateDictAdapter
+from .models import Args, CardAccount, ImporterTemplate, TemplateDictAdapter
 from .output import (
     Counts,
     make_console,
@@ -32,7 +31,6 @@ def _process_one(
     csv_path: Path,
     template_arg: str | None,
     mappings: dict[str, dict[str, CardAccount]],
-    detection_rules: dict[str, TemplateDetectionRule],
     importer_url: str,
     secret: str,
     dry_run: bool,
@@ -43,13 +41,14 @@ def _process_one(
 
     auto_detected = False
     if template_arg is None:
-        matches = detect_template(csv_path, csv_bytes, detection_rules)
+        matches = detect_template(csv_path, csv_bytes)
         known = ", ".join(sorted(TEMPLATES)) or "<none>"
         if not matches:
             parser.error(
                 f"Could not auto-detect a template for {csv_path.name!r}: no template's "
-                + "filename_pattern or csv_column_header in configs/template_detection.json "
-                + f"matched. Re-run with -t/--template (known templates: {known})."
+                + "filename_pattern or csv_column_header on its TemplateInfo in "
+                + "src/firefly_iii_utils/paths.py matched. "
+                + f"Re-run with -t/--template (known templates: {known})."
             )
         if len(matches) > 1:
             candidates = ", ".join(matches)
@@ -71,7 +70,7 @@ def _process_one(
     except ValidationError as exc:
         parser.error(f"Template {template_path.name} is not a valid JSON object:\n{exc}")
     mapping_summary = apply_template_overrides(
-        template_dict, template_name, csv_path, csv_bytes, mappings, detection_rules, parser
+        template_dict, template_name, csv_path, csv_bytes, mappings, parser
     )
     try:
         template = ImporterTemplate.model_validate(template_dict)
@@ -163,8 +162,8 @@ def main():
         choices=sorted(TEMPLATES),
         help=(
             "Which JSON template under configs/ to use. If omitted, the template is "
-            "auto-detected from the CSV using the rules in configs/template_detection.json. "
-            "Not allowed when path is a directory."
+            "auto-detected from the CSV using the detection rules in TEMPLATES in "
+            "src/firefly_iii_utils/paths.py. Not allowed when path is a directory."
         ),
     )
     _ = parser.add_argument(
@@ -198,7 +197,6 @@ def main():
         parser.error(f"Path not found: {input_path}")
 
     mappings = load_account_mappings()
-    detection_rules = load_template_detection()
 
     _ = load_dotenv()
     importer_url = os.environ["DATA_IMPORTER_URL"].rstrip("/")
@@ -220,7 +218,6 @@ def main():
                 csv_path,
                 args.template,
                 mappings,
-                detection_rules,
                 importer_url,
                 secret,
                 args.dry_run,

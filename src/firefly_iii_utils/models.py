@@ -37,12 +37,9 @@ class CardAccount(BaseModel):
 
 class TemplateInfo(BaseModel):
     path: Path
-    preprocessor: Callable[[bytes], tuple[bytes, str]] | None = None
-
-
-class TemplateDetectionRule(BaseModel):
     filename_pattern: str | None = None
     csv_column_header: str | None = None
+    preprocessor: Callable[[bytes], tuple[bytes, str]] | None = None
 
     @field_validator("filename_pattern")
     @classmethod
@@ -52,19 +49,14 @@ class TemplateDetectionRule(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _exactly_one_lookup_source(self) -> Self:
-        has_filename = self.filename_pattern is not None
-        has_csv_column = self.csv_column_header is not None
-        if has_filename == has_csv_column:
-            raise ValueError("exactly one of filename_pattern or csv_column_header must be set")
+    def _at_most_one_lookup_source(self) -> Self:
+        if self.filename_pattern is not None and self.csv_column_header is not None:
+            raise ValueError("at most one of filename_pattern or csv_column_header may be set")
         return self
 
 
 AccountMappingsAdapter: TypeAdapter[dict[str, dict[str, CardAccount]]] = TypeAdapter(
     dict[str, dict[str, CardAccount]]
-)
-TemplateDetectionAdapter: TypeAdapter[dict[str, TemplateDetectionRule]] = TypeAdapter(
-    dict[str, TemplateDetectionRule]
 )
 TemplateDictAdapter: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
 
