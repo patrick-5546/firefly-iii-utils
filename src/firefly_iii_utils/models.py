@@ -60,6 +60,7 @@ class TransactionSplit(BaseModel):
     description: str
     amount: str
     date: str
+    type: str
     source_name: str | None = None
     destination_name: str | None = None
     category_id: str | None = None
@@ -102,6 +103,24 @@ class CategoryData(BaseModel):
 class CategoryListResponse(BaseModel):
     data: list[CategoryData]
     meta: Meta
+
+
+class AutocompleteCategoryEntry(BaseModel):
+    """One entry from ``GET /api/v1/autocomplete/categories``.
+
+    The autocomplete endpoint returns a flat ``application/json``
+    array (not a JSON-API document), so this model is consumed via a
+    :class:`pydantic.TypeAdapter` rather than wrapped in a
+    list-response model with ``data`` / ``meta`` fields.
+    """
+
+    id: str
+    name: str
+
+
+AutocompleteCategoryListAdapter: TypeAdapter[list[AutocompleteCategoryEntry]] = TypeAdapter(
+    list[AutocompleteCategoryEntry]
+)
 
 
 class ImporterTemplate(BaseModel):
@@ -158,4 +177,10 @@ class ExportArgs(BaseModel):
 class ImportCategoriesArgs(BaseModel):
     path: str
     dry_run: bool
+    no_color: bool
+
+
+class FindUnmatchedTransfersArgs(BaseModel):
+    start: str
+    end: str | None
     no_color: bool

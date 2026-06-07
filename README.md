@@ -304,6 +304,50 @@ uv run firefly-iii-import-categories --dry-run path/to/guessed.csv
 uv run firefly-iii-import-categories --no-color path/to/guessed.csv
 ```
 
+### `firefly-iii-find-unmatched-transfers`
+
+> List unmatched transactions in the `Transfers` category for a month
+> or month range
+
+Manually-imported transfers between two of your own accounts get
+recorded as two separate transactions in Firefly III (a withdrawal
+from one asset account and a deposit into the other), both tagged
+under the `Transfers` category. When only one of the two bank CSVs
+has been imported yet, the orphan sits in the category with no
+counterpart. This script lists those orphans so they can be
+investigated by hand.
+
+```sh
+# Single month — prints the unmatched-transfers CSV for June 2026,
+# colored when stdout is a TTY:
+uv run firefly-iii-find-unmatched-transfers 2026-06
+
+# Month range (inclusive on both ends):
+uv run firefly-iii-find-unmatched-transfers 2026-01 2026-06
+
+# Redirect to a file (auto-detected as non-TTY -> plain CSV, no escape
+# codes):
+uv run firefly-iii-find-unmatched-transfers 2026-06 > unmatched.csv
+
+# Disable column colors for the CSV on stdout (also auto-disabled when
+# stdout isn't a TTY or when the NO_COLOR environment variable is set):
+uv run firefly-iii-find-unmatched-transfers --no-color 2026-06
+```
+
+Within the requested date range, every `Transfers`-category
+withdrawal is paired with a deposit of the same absolute amount,
+greedily by earliest date. The pairs (printed to stderr for
+verification) drop out of the result; the leftovers are emitted to
+stdout as a CSV sorted by `(date, signed amount)` — where deposits
+sort with a positive amount and withdrawals with a negative one, so
+debits and credits at the same date group naturally.
+
+Transactions of any other type (`transfer`, `reconciliation`,
+`opening balance`) are skipped because Firefly III already records
+them atomically and they don't need a counterpart. As with
+`firefly-iii-guess-categories`, the script errors out if any
+transaction in the category has more than one split.
+
 ## Development
 
 This project is managed with [uv](https://docs.astral.sh/uv/).

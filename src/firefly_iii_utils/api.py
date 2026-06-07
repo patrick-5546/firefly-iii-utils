@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from .models import (
     AccountResponse,
+    AutocompleteCategoryListAdapter,
     CategoryListResponse,
     TagListResponse,
     TransactionListResponse,
@@ -203,6 +204,71 @@ def iter_categories() -> Iterator[str]:
         body = CategoryListResponse.model_validate(response.json())
         for entry in body.data:
             yield entry.attributes.name
+        if page >= body.meta.pagination.total_pages:
+            return
+        page += 1
+
+
+def lookup_category_id(name: str) -> str | None:
+    """Return the Firefly III id of the category named ``name``, or ``None``.
+
+    Uses the ``GET /api/v1/autocomplete/categories`` endpoint, which is
+    purpose-built for name-to-id resolution: it accepts a ``query``
+    parameter and returns a flat ``[{id, name}]`` array (much cheaper
+    than paginating ``/api/v1/categories``). The autocomplete match is
+    substring-ish, so we filter the response for an exact name match
+    before returning the id.
+
+    The autocomplete endpoint serves ``application/json`` (not the
+    JSON-API media type the rest of the API uses), so we override the
+    ``Accept`` header here.
+    """
+    url, headers = _auth_context_strict()
+    response = requests.get(
+        f"{url}/api/v1/autocomplete/categories",
+        headers={**headers, "accept": "application/json"},
+        params={"query": name},
+        timeout=_TIMEOUT,
+    )
+    response.raise_for_status()
+    entries = AutocompleteCategoryListAdapter.validate_python(response.json())
+    for entry in entries:
+        if entry.name == name:
+            return entry.id
+    return None
+
+
+def iter_transactions_for_category(
+    category_id: str,
+    *,
+    start: str,
+    end: str,
+) -> Iterator[tuple[str, list[TransactionSplit]]]:
+    """Yield ``(transaction_id, splits)`` for every transaction in a category.
+
+    Wraps ``GET /api/v1/categories/{id}/transactions`` with ``start``
+    and ``end`` query parameters (both ``YYYY-MM-DD``, inclusive).
+    Mirrors :func:`iter_transactions_for_tag` exactly: same pagination
+    shape, same response model, same yield contract.
+    """
+    url, headers = _auth_context_strict()
+    page = 1
+    while True:
+        response = requests.get(
+            f"{url}/api/v1/categories/{category_id}/transactions",
+            headers=headers,
+            params={
+                "limit": _PAGE_LIMIT,
+                "page": page,
+                "start": start,
+                "end": end,
+            },
+            timeout=_TIMEOUT,
+        )
+        response.raise_for_status()
+        body = TransactionListResponse.model_validate(response.json())
+        for entry in body.data:
+            yield entry.id, entry.attributes.transactions
         if page >= body.meta.pagination.total_pages:
             return
         page += 1

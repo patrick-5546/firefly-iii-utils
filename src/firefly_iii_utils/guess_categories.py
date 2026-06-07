@@ -1,19 +1,16 @@
 import argparse
 import asyncio
-import csv
-import io
-import sys
-from datetime import datetime
-from decimal import Decimal, InvalidOperation
-from typing import NamedTuple, TextIO
+from decimal import Decimal
+from typing import NamedTuple
 
 from dotenv import load_dotenv
 from rich.console import Console
-from rich.text import Text
 
 from . import categorization
 from .api import iter_categories, iter_tags, iter_transactions_for_tag
+from .csv_output import emit_csv
 from .models import ExportArgs, TransactionSplit
+from .parsing import format_date, parse_amount
 
 CSV_HEADER = (
     "transaction_id",
@@ -65,22 +62,6 @@ class Row(NamedTuple):
 
 def _matching_tags(prefix: str) -> list[str]:
     return [tag for tag in iter_tags() if tag.startswith(prefix)]
-
-
-def _parse_date(value: str) -> datetime:
-    """Parse Firefly III's ISO 8601 date-time, tolerating a trailing ``Z``."""
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-
-def _format_date(value: str) -> str:
-    return _parse_date(value).date().isoformat()
-
-
-def _parse_amount(value: str) -> Decimal:
-    try:
-        return Decimal(value)
-    except InvalidOperation as exc:
-        raise ValueError(f"unparseable amount {value!r}") from exc
 
 
 def _collect_rows(
@@ -138,7 +119,7 @@ def _row_for(
     parser: argparse.ArgumentParser,
 ) -> Row:
     try:
-        date_str = _format_date(split.date)
+        date_str = format_date(split.date)
     except ValueError as exc:
         parser.error(
             f"Transaction {transaction_id!r} under tag {tag!r} has unparseable date "
@@ -155,58 +136,7 @@ def _row_for(
 
 
 def _sort_key(row: Row) -> tuple[str, Decimal]:
-    return row.date, _parse_amount(row.amount)
-
-
-def _write_csv(rows: list[Row], sink: TextIO) -> None:
-    writer = csv.writer(sink)
-    writer.writerow(CSV_HEADER)
-    writer.writerows(row.visible() for row in rows)
-
-
-def _csv_cell(value: str) -> str:
-    """Return the CSV-quoted form of ``value`` (without a trailing newline).
-
-    Uses ``csv.writer`` for a single-cell "row" so quoting, escaping,
-    and embedded-comma handling match :func:`_write_csv` exactly. The
-    trailing ``\\r\\n`` that ``csv.writer`` appends is stripped so the
-    cell can be re-joined with commas downstream.
-
-    Special-cases the empty string: a single-cell csv-writer row would
-    emit ``""`` (a quoted empty cell, to disambiguate from a zero-cell
-    row), but ``csv.writer.writerows`` leaves an empty cell bare in
-    multi-cell rows. We mirror the multi-cell behaviour so colored
-    output stays byte-identical to :func:`_write_csv`.
-    """
-    if value == "":
-        return ""
-    buf = io.StringIO()
-    csv.writer(buf).writerow([value])
-    return buf.getvalue().rstrip("\r\n")
-
-
-def _write_csv_colored(rows: list[Row], console: Console) -> None:
-    """Print ``rows`` as a CSV with one Rich style per column.
-
-    Each cell goes through :func:`_csv_cell` so the visible characters
-    are byte-identical to what :func:`_write_csv` would produce; only
-    ANSI styling is added on top. ``soft_wrap=True`` prevents Rich from
-    re-wrapping long descriptions, which would otherwise corrupt the
-    CSV. Intended for the TTY path; when the destination is a file or
-    pipe, callers should use :func:`_write_csv` instead so no escape
-    codes leak into the output.
-    """
-    separator = Text(",")
-    header = separator.join(
-        Text(name, style=style) for name, style in zip(CSV_HEADER, COLUMN_STYLES, strict=True)
-    )
-    console.print(header, soft_wrap=True, highlight=False)
-    for row in rows:
-        line = separator.join(
-            Text(_csv_cell(cell), style=style)
-            for cell, style in zip(row.visible(), COLUMN_STYLES, strict=True)
-        )
-        console.print(line, soft_wrap=True, highlight=False)
+    return row.date, parse_amount(row.amount)
 
 
 def main() -> None:
@@ -296,12 +226,12 @@ def main() -> None:
     rows.sort(key=_sort_key)
     console.print(f"Writing {len(rows)} row(s)", highlight=False)
 
-    stdout_console = Console(no_color=args.no_color)
-    if stdout_console.is_terminal and not args.no_color:
-        _write_csv_colored(rows, stdout_console)
-    else:
-        _write_csv(rows, sys.stdout)
-        _ = sys.stdout.flush()
+    emit_csv(
+        CSV_HEADER,
+        [row.visible() for row in rows],
+        COLUMN_STYLES,
+        no_color=args.no_color,
+    )
 
 
 if __name__ == "__main__":
