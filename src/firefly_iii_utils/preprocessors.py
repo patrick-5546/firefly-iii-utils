@@ -1,9 +1,8 @@
 import csv
 import io
-from collections.abc import Callable
 
 
-def _preprocess_cap1_cc(csv_bytes: bytes) -> tuple[bytes, int]:
+def preprocess_cap1_cc(csv_bytes: bytes) -> tuple[bytes, int]:
     """Move every Credit value into Debit with a leading minus.
 
     Capital One uses two positive columns (Debit for charges, Credit for
@@ -45,8 +44,3 @@ def _preprocess_cap1_cc(csv_bytes: bytes) -> tuple[bytes, int]:
     writer = csv.writer(out)
     writer.writerows(rows)
     return out.getvalue().encode("utf-8"), rewritten
-
-
-PREPROCESSORS: dict[str, Callable[[bytes], tuple[bytes, int]]] = {
-    "cap1_cc": _preprocess_cap1_cc,
-}

@@ -9,10 +9,14 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from .api import lookup_account_name
-from .mappings import apply_template_overrides, detect_template, load_account_mappings
+from .mappings import (
+    apply_template_overrides,
+    detect_template,
+    load_account_mappings,
+    load_template_detection,
+)
 from .models import Args, ImporterTemplate, TemplateDictAdapter
 from .paths import TEMPLATES
-from .preprocessors import PREPROCESSORS
 
 
 def main():
@@ -26,7 +30,7 @@ def main():
         choices=sorted(TEMPLATES),
         help=(
             "Which JSON template under configs/ to use. If omitted, the template is "
-            "auto-detected from the CSV using the rules in configs/account_mappings.json."
+            "auto-detected from the CSV using the rules in configs/template_detection.json."
         ),
     )
     _ = parser.add_argument(
@@ -43,15 +47,16 @@ def main():
 
     csv_bytes = csv_path.read_bytes()
     mappings = load_account_mappings()
+    detection_rules = load_template_detection()
 
     auto_detected = False
     if args.template is None:
-        matches = detect_template(csv_path, csv_bytes, mappings)
+        matches = detect_template(csv_path, csv_bytes, detection_rules)
         known = ", ".join(sorted(TEMPLATES)) or "<none>"
         if not matches:
             parser.error(
                 f"Could not auto-detect a template for {csv_path.name!r}: no template's "
-                + "filename_pattern or csv_column_header in configs/account_mappings.json "
+                + "filename_pattern or csv_column_header in configs/template_detection.json "
                 + f"matched. Re-run with -t/--template (known templates: {known})."
             )
         if len(matches) > 1:
@@ -65,7 +70,7 @@ def main():
     else:
         template_name = args.template
 
-    template_path = TEMPLATES[template_name]
+    template_path = TEMPLATES[template_name].path
     if not template_path.is_file():
         parser.error(f"Template file not found: {template_path}")
 
@@ -78,7 +83,7 @@ def main():
     except ValidationError as exc:
         parser.error(f"Template {template_path.name} is not a valid JSON object:\n{exc}")
     mapping_summary = apply_template_overrides(
-        template_dict, template_name, csv_path, csv_bytes, mappings, parser
+        template_dict, template_name, csv_path, csv_bytes, mappings, detection_rules, parser
     )
     try:
         template = ImporterTemplate.model_validate(template_dict)
@@ -89,7 +94,7 @@ def main():
         )
     payload = json.dumps(template_dict).encode("utf-8")
 
-    preprocessor = PREPROCESSORS.get(template_name)
+    preprocessor = TEMPLATES[template_name].preprocessor
     preprocessing_summary: str | None = None
     if preprocessor is not None:
         try:

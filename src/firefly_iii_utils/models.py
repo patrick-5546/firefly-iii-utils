@@ -1,4 +1,6 @@
 import re
+from collections.abc import Callable
+from pathlib import Path
 from typing import Self
 
 from pydantic import (
@@ -33,10 +35,14 @@ class CardAccount(BaseModel):
     abbreviation: str
 
 
-class TemplateMapping(BaseModel):
+class TemplateInfo(BaseModel):
+    path: Path
+    preprocessor: Callable[[bytes], tuple[bytes, int]] | None = None
+
+
+class TemplateDetectionRule(BaseModel):
     filename_pattern: str | None = None
     csv_column_header: str | None = None
-    accounts: dict[str, CardAccount]
 
     @field_validator("filename_pattern")
     @classmethod
@@ -54,8 +60,11 @@ class TemplateMapping(BaseModel):
         return self
 
 
-AccountMappingsAdapter: TypeAdapter[dict[str, TemplateMapping]] = TypeAdapter(
-    dict[str, TemplateMapping]
+AccountMappingsAdapter: TypeAdapter[dict[str, dict[str, CardAccount]]] = TypeAdapter(
+    dict[str, dict[str, CardAccount]]
+)
+TemplateDetectionAdapter: TypeAdapter[dict[str, TemplateDetectionRule]] = TypeAdapter(
+    dict[str, TemplateDetectionRule]
 )
 TemplateDictAdapter: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
 

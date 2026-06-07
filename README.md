@@ -44,7 +44,7 @@ Uploads a CSV plus a JSON template from `configs/` to the importer's
 `/autoupload` endpoint, replicating the manual file-upload wizard.
 
 ```sh
-# Template is auto-detected from configs/account_mappings.json
+# Template is auto-detected from configs/template_detection.json
 # (filename pattern or CSV column header):
 uv run firefly-iii-import-transactions path/to/Chase1234_Activity.CSV
 uv run firefly-iii-import-transactions path/to/2026-06-06_transaction_download.csv
@@ -59,75 +59,87 @@ uv run firefly-iii-import-transactions --dry-run path/to/Chase1234_Activity.CSV
 
 Auto-detection iterates the templates registered in
 `src/firefly_iii_utils/paths.py`'s `TEMPLATES` dict and, for each one
-that has an entry in `configs/account_mappings.json`, checks whether
+that has a rule in `configs/template_detection.json`, checks whether
 its `filename_pattern` matches the CSV filename or its
 `csv_column_header` is present in the CSV's header row. If zero
 templates match — or more than one — the script errors out and asks
 you to pass `-t/--template`.
+
+#### Template detection rules (`configs/template_detection.json`)
+
+Each entry uses **exactly one** of two lookup sources to identify which
+account a CSV belongs to. The same rule drives both auto-detection
+(which template to use) and per-account override resolution (which
+Firefly III account id to post to):
+
+- `filename_pattern` — a regex with one capture group, applied to the CSV
+  filename. The captured value is the lookup key into
+  `configs/account_mappings.json`. Used by `chase_cc`, where the filename
+  embeds the last 4 digits of the card.
+- `csv_column_header` — the header name of a column in the CSV body. Every
+  data row's value in that column is treated as a lookup key into
+  `configs/account_mappings.json`. All rows must resolve to the **same**
+  Firefly III `account_id`, otherwise the script refuses to upload (this
+  guards against mixed-account exports). Used by `cap1_cc`, where the
+  filename has no identifier but the `Card No.` column does — and multiple
+  card numbers may legitimately point to the same account (e.g. a primary
+  card plus an authorized user).
+
+Schema:
+
+```json
+{
+  "<template_name>": { "filename_pattern": "Bank(\\d{4})_" },
+  "<other_template>": { "csv_column_header": "Card No." }
+}
+```
 
 #### Per-account overrides (`configs/account_mappings.json`)
 
 A single importer template can be shared across multiple accounts at the
 same bank (e.g. several Chase credit cards using one CSV format). The
 mapping file `configs/account_mappings.json` (gitignored, since account
-ids are private) lets the script pick the right Firefly III account id
-and tag suffix.
-
-Each template entry uses **exactly one** of two lookup sources:
-
-- `filename_pattern` — a regex with one capture group, applied to the CSV
-  filename. The captured value is the lookup key into `accounts`. Used by
-  `chase_cc`, where the filename embeds the last 4 digits of the card.
-- `csv_column_header` — the header name of a column in the CSV body. Every
-  data row's value in that column is treated as a lookup key into `accounts`.
-  All rows must resolve to the **same** Firefly III `account_id`, otherwise
-  the script refuses to upload (this guards against mixed-account exports).
-  Used by `cap1_cc`, where the filename has no identifier but the `Card No.`
-  column does — and multiple card numbers may legitimately point to the
-  same account (e.g. a primary card plus an authorized user).
+ids are private) maps each lookup key — produced by the detection rule
+above — to a Firefly III account id and tag suffix.
 
 Schema:
 
 ```json
 {
   "<template_name>": {
-    "filename_pattern": "Bank(\\d{4})_",
-    "accounts": {
-      "<lookup_key>": { "account_id": 1, "abbreviation": "aa" }
-    }
+    "<lookup_key>": { "account_id": 1, "abbreviation": "aa" }
   },
   "<other_template>": {
-    "csv_column_header": "Card No.",
-    "accounts": {
-      "<lookup_key>": { "account_id": 2, "abbreviation": "bb" }
-    }
+    "<lookup_key>": { "account_id": 2, "abbreviation": "bb" }
   }
 }
 ```
 
 For each upload, when the selected template has an entry in this file:
 
-1. The configured lookup source is resolved to a key (or set of keys, for
-   `csv_column_header`).
+1. The template's lookup source (from `configs/template_detection.json`)
+   is resolved to a key (or set of keys, for `csv_column_header`).
 2. The matching entry's `account_id` overrides `default_account` in the
    template before it is sent to the importer.
 3. The entry's `abbreviation` is appended to `custom_tag`, so a base
    tag of `"%datetime%: <template_name>"` becomes
    `"%datetime%: <template_name> <abbreviation>"`.
 
-If the lookup fails — filename doesn't match, captured key isn't in
-`accounts`, a CSV row has an unknown key, multiple rows disagree on the
-account, or the post-override `default_account` is still `< 1` — the
-script refuses to upload and prints an error explaining what went wrong.
+If the lookup fails — filename doesn't match, captured key isn't in the
+template's per-card dict, a CSV row has an unknown key, multiple rows
+disagree on the account, or the post-override `default_account` is still
+`< 1` — the script refuses to upload and prints an error explaining what
+went wrong.
 
 #### Per-template CSV preprocessing
 
 Some banks emit CSVs that don't match the importer template's column
-shape and need a small transformation before upload.
-`firefly-iii-import-transactions` keeps a small registry of preprocessors keyed
-by template name; when one is registered, the CSV is parsed, rewritten
-in memory, and the transformed bytes are uploaded (the original file
-on disk is never modified).
+shape and need a small transformation before upload. Each `TemplateInfo`
+in `TEMPLATES` (in `src/firefly_iii_utils/paths.py`) has an optional
+`preprocessor` field; when it's set, the CSV is parsed, rewritten in
+memory, and the transformed bytes are uploaded (the original file on
+disk is never modified). The preprocessor functions themselves live in
+`src/firefly_iii_utils/preprocessors.py`.
 
 Currently registered:
 
@@ -141,14 +153,15 @@ Currently registered:
   signs for the cap1 account if needed.) Rows where both `Debit` and
   `Credit` are populated cause the upload to be refused.
 
-To add a new bank, drop its JSON template into `configs/`, add an entry
-to the `TEMPLATES` dict in `src/firefly_iii_utils/paths.py`, add a
-matching entry to `configs/account_mappings.json` (its
-`filename_pattern` / `csv_column_header` is what makes the template
-auto-detectable as well as resolving the per-CSV account override),
-and (if the CSV format needs reshaping) register a preprocessor in
-the `PREPROCESSORS` dict in
-`src/firefly_iii_utils/preprocessors.py`.
+To add a new bank, drop its JSON template into `configs/`, register
+it in the `TEMPLATES` dict in `src/firefly_iii_utils/paths.py` (the
+path and optionally a preprocessor), add a `filename_pattern` or
+`csv_column_header` rule for it to `configs/template_detection.json`,
+add the per-card account ids and abbreviations under that template's
+key in `configs/account_mappings.json`, and (if the CSV format needs
+reshaping) add a preprocessor function to
+`src/firefly_iii_utils/preprocessors.py` and wire it through the new
+entry's `preprocessor` field.
 
 ## Development
 
