@@ -2,5 +2,6 @@
     "chase_cc": { "filename_pattern": "Chase(\\d{4})_.*\\.CSV$" },
     "cap1_cc": { "csv_column_header": "Card No." },
     "bmo_harris_cc": { "filename_pattern": "^(transactions)_\\d{9}\\.csv$" },
-    "wf_acct": { "filename_pattern": "^(.+?) - .*\\d{4}\\.csv$" }
+    "wf_acct": { "filename_pattern": "^(.+?) - .*\\d{4}\\.csv$" },
+    "citi_cc": { "filename_pattern": "^(Year to date).*\\.CSV$" }
 }

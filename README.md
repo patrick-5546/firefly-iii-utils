@@ -156,6 +156,15 @@ Currently registered:
   transfers between the user's own Wealthfront accounts as rows where
   `Type` is `Transfer`. The preprocessor drops every such row before
   upload so they aren't imported as standalone deposits / withdrawals.
+- **`citi_cc`** — Citi splits its amount across two columns: `Debit`
+  for charges (positive) and `Credit` for payments / refunds (already
+  negative). The importer template only points its `amount` role at
+  `Debit`, so the preprocessor moves each `Credit` value into `Debit`
+  **as-is** (no negation — Citi already signed it). Rows where both
+  `Debit` and `Credit` are populated cause the upload to be refused.
+  (Note: like `cap1_cc`, citi's resulting sign convention is opposite
+  `chase_cc`'s; rely on Firefly III's rule engine to flip signs for
+  the citi account if needed.)
 
 To add a new bank, drop its JSON template into `configs/`, register
 it in the `TEMPLATES` dict in `src/firefly_iii_utils/paths.py` (the

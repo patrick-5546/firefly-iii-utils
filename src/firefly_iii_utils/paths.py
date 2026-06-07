@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from .models import TemplateInfo
-from .preprocessors import preprocess_cap1_cc, preprocess_wf_acct
+from .preprocessors import preprocess_cap1_cc, preprocess_citi_cc, preprocess_wf_acct
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIGS_DIR = REPO_ROOT / "configs"
@@ -18,5 +18,9 @@ TEMPLATES: dict[str, TemplateInfo] = {
     "wf_acct": TemplateInfo(
         path=CONFIGS_DIR / "wf_acct.json",
         preprocessor=preprocess_wf_acct,
+    ),
+    "citi_cc": TemplateInfo(
+        path=CONFIGS_DIR / "citi_cc.json",
+        preprocessor=preprocess_citi_cc,
     ),
 }
