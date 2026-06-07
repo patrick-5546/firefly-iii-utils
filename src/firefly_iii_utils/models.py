@@ -150,9 +150,9 @@ class Args(BaseModel):
 
 class ExportArgs(BaseModel):
     prefix: str
-    no_color: bool
     model: str
     no_guess: bool
+    no_color: bool
 
 
 class ImportCategoriesArgs(BaseModel):

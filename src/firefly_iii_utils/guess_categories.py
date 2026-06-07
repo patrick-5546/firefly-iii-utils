@@ -223,16 +223,6 @@ def main() -> None:
         help="Case-sensitive tag-name prefix; every tag whose name starts with this is included.",
     )
     _ = parser.add_argument(
-        "-N",
-        "--no-color",
-        action="store_true",
-        help=(
-            "Disable colored output for the CSV when it's printed to stdout. Colors are "
-            "also disabled automatically when stdout is not a terminal or when the "
-            "NO_COLOR environment variable is set."
-        ),
-    )
-    _ = parser.add_argument(
         "-m",
         "--model",
         default=categorization.DEFAULT_MODEL,
@@ -243,13 +233,23 @@ def main() -> None:
         ),
     )
     _ = parser.add_argument(
-        "-G",
+        "-n",
         "--no-guess",
         action="store_true",
         help=(
             "Skip the GitHub Copilot call. The CSV is still written with a `category` "
             "column, but every row's value is left blank. Useful for a quick uncategorized "
             "export without burning model calls."
+        ),
+    )
+    _ = parser.add_argument(
+        "-N",
+        "--no-color",
+        action="store_true",
+        help=(
+            "Disable colored output for the CSV when it's printed to stdout. Colors are "
+            "also disabled automatically when stdout is not a terminal or when the "
+            "NO_COLOR environment variable is set."
         ),
     )
     args = ExportArgs.model_validate(vars(parser.parse_args()))
