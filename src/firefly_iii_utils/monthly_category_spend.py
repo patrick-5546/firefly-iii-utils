@@ -61,8 +61,19 @@ NO_CATEGORY_LABEL = "(no category)"
 TOTAL_LABEL = "total"
 
 CATEGORY_COLUMN_STYLE = "cyan"
-MONTH_COLUMN_STYLE = "yellow"
 AVERAGE_COLUMN_STYLE = "magenta"
+MONTH_COLUMN_PALETTE = (
+    "green",
+    "yellow",
+    "blue",
+    "red",
+    "bright_cyan",
+    "bright_green",
+    "bright_yellow",
+    "bright_blue",
+    "bright_red",
+    "bright_magenta",
+)
 
 
 def _filter_label(prefix: str) -> str:
@@ -508,7 +519,7 @@ def main() -> None:
     header = ("category", *months, "average")
     column_styles = (
         CATEGORY_COLUMN_STYLE,
-        *(MONTH_COLUMN_STYLE for _ in months),
+        *(MONTH_COLUMN_PALETTE[i % len(MONTH_COLUMN_PALETTE)] for i in range(len(months))),
         AVERAGE_COLUMN_STYLE,
     )
 
