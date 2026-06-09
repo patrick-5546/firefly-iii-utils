@@ -378,6 +378,10 @@ uv run firefly-iii-monthly-category-spend 2026-01 2026-06
 # (repeatable; '(no category)' also accepted to drop the uncategorized row):
 uv run firefly-iii-monthly-category-spend --exclude Transfers --exclude Salary 2026-01 2026-06
 
+# Add informational per-month rows below 'total' for every withdrawal whose
+# description starts with PREFIX (case-insensitive; repeatable):
+uv run firefly-iii-monthly-category-spend --filter 'AMAZON MKTPL' --filter 'COSTCO WHSE' 2026-01 2026-06
+
 # Override the currency; entries in any other currency are silently dropped:
 uv run firefly-iii-monthly-category-spend --currency EUR 2026-01 2026-06
 

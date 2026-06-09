@@ -61,6 +61,7 @@ class TransactionSplit(BaseModel):
     amount: str
     date: str
     type: str
+    currency_code: str | None = None
     source_name: str | None = None
     destination_name: str | None = None
     category_id: str | None = None
@@ -287,5 +288,6 @@ class MonthlyCategorySpendArgs(BaseModel):
     start: str
     end: str | None
     exclude: list[str]
+    filter: list[str]
     currency: str
     no_color: bool

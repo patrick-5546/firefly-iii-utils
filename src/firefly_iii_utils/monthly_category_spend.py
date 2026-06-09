@@ -8,16 +8,26 @@ category, one column per month, and a final ``average`` column. A
 ``total`` row across every kept category (plus the synthetic
 ``(no category)`` row) is appended at the bottom.
 
+When one or more ``-f/--filter PREFIX`` flags are passed, the script
+additionally walks ``GET /api/v1/transactions?type=withdrawal`` once
+for the full date range, sums withdrawals whose ``description``
+starts with each prefix (case-insensitive) per month, and emits an
+extra row per filter **below** the ``total`` row labeled
+``[filter] <prefix>*``. These rows cross-cut categories (each
+matching transaction already lives in some category's row), so they
+are intentionally excluded from ``total`` to avoid double-counting.
+
 Single-currency only, defaulting to USD, mirroring
-:mod:`firefly_iii_utils.sum_budget_diffs`. Any insight entry whose
-``currency_code`` doesn't match ``--currency`` is silently skipped
-so multi-currency Firefly III instances still produce a clean
-single-currency report; the per-month progress line on stderr
-includes the skip count whenever it's non-zero.
+:mod:`firefly_iii_utils.sum_budget_diffs`. Any insight entry or
+withdrawal split whose ``currency_code`` doesn't match ``--currency``
+is silently skipped so multi-currency Firefly III instances still
+produce a clean single-currency report; the per-month progress line
+on stderr includes the skip count whenever it's non-zero.
 
 Spending values are displayed as positive "money out" by negating the
 signed ``difference`` returned by the insight endpoints (Firefly III
-reports expenses as negative numbers).
+reports expenses as negative numbers). Withdrawal-split amounts come
+through positive already.
 """
 
 import argparse
@@ -29,10 +39,14 @@ from decimal import Decimal
 from dotenv import load_dotenv
 from rich.console import Console
 
-from .api import iter_insight_expense_categories, iter_insight_expense_no_category
+from .api import (
+    iter_insight_expense_categories,
+    iter_insight_expense_no_category,
+    iter_withdrawals,
+)
 from .csv_output import emit_csv
 from .models import MonthlyCategorySpendArgs
-from .parsing import parse_amount
+from .parsing import format_date, parse_amount
 
 DEFAULT_CURRENCY = "USD"
 
@@ -42,6 +56,11 @@ TOTAL_LABEL = "total"
 CATEGORY_COLUMN_STYLE = "cyan"
 MONTH_COLUMN_STYLE = "yellow"
 AVERAGE_COLUMN_STYLE = "magenta"
+
+
+def _filter_label(prefix: str) -> str:
+    """Render the CSV label for a ``--filter`` row."""
+    return f"[filter] {prefix}*"
 
 
 def _parse_month(value: str) -> str:
@@ -152,6 +171,73 @@ def _collect_month(
     return n_categories, month_total, n_skipped
 
 
+def _collect_filters(
+    months: list[str],
+    *,
+    currency: str,
+    filters: list[str],
+    parser: argparse.ArgumentParser,
+) -> tuple[dict[str, dict[str, Decimal]], dict[str, int], int]:
+    """Walk every withdrawal in the range once, bucketing matches by ``(prefix, month)``.
+
+    Returns ``(per_filter_totals, per_filter_match_count,
+    n_skipped_currency)``. ``per_filter_totals`` is keyed by the
+    original (caller-supplied) prefix so the rendering layer can use
+    it as a CSV label without losing the user's casing.
+
+    Each prefix is matched case-insensitively against
+    ``split.description``. Splits in a currency other than
+    ``currency`` are silently skipped and counted in
+    ``n_skipped_currency`` (mirroring the insight-call policy);
+    splits whose ``currency_code`` is unset are accepted. A given
+    split may match multiple prefixes — it is counted in each
+    matching prefix's bucket — by design, so a user can pass two
+    spellings like ``--filter AMZN --filter Amazon`` without one
+    silently shadowing the other.
+    """
+    first_day, _ = _month_bounds(months[0])
+    _, last_day = _month_bounds(months[-1])
+    start_iso = first_day.isoformat()
+    end_iso = last_day.isoformat()
+
+    lowercase_filters = [(prefix.lower(), prefix) for prefix in filters]
+    months_set = set(months)
+
+    per_filter: dict[str, dict[str, Decimal]] = {
+        prefix: dict.fromkeys(months, Decimal(0)) for prefix in filters
+    }
+    match_counts: dict[str, int] = dict.fromkeys(filters, 0)
+    n_skipped_currency = 0
+
+    for split in iter_withdrawals(start=start_iso, end=end_iso):
+        if split.currency_code is not None and split.currency_code != currency:
+            n_skipped_currency += 1
+            continue
+        try:
+            month = format_date(split.date)[:7]
+        except ValueError as exc:
+            parser.error(
+                f"Withdrawal journal id {split.transaction_journal_id!r} has unparseable "
+                + f"date {split.date!r}: {exc}"
+            )
+        if month not in months_set:
+            continue
+        try:
+            spend = parse_amount(split.amount)
+        except ValueError as exc:
+            parser.error(
+                f"Withdrawal journal id {split.transaction_journal_id!r} has unparseable "
+                + f"amount {split.amount!r}: {exc}"
+            )
+        desc_lower = split.description.lower()
+        for lower_prefix, original in lowercase_filters:
+            if desc_lower.startswith(lower_prefix):
+                per_filter[original][month] += spend
+                match_counts[original] += 1
+
+    return per_filter, match_counts, n_skipped_currency
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
@@ -159,10 +245,13 @@ def main() -> None:
             "expense-insight endpoints once per month and emit a wide CSV on stdout with "
             "one row per category, one column per month, and a final 'average' column. "
             "A synthetic '(no category)' row covers uncategorized spending; a final "
-            "'total' row sums every kept row column-by-column. Single-currency only "
-            "(default USD); insight entries in a different currency are silently "
-            "skipped (the per-month progress line on stderr surfaces the skip count "
-            "when non-zero)."
+            "'total' row sums every kept row column-by-column. With one or more "
+            "--filter PREFIX flags, also walk withdrawals once for the full range and "
+            "emit an extra '[filter] PREFIX*' row per prefix BELOW the total row "
+            "(intentionally excluded from total because each match already lives in "
+            "some category). Single-currency only (default USD); entries in a "
+            "different currency are silently skipped (the per-month progress line on "
+            "stderr surfaces the skip count when non-zero)."
         ),
     )
     _ = parser.add_argument(
@@ -192,6 +281,21 @@ def main() -> None:
             "(e.g. --exclude Transfers --exclude Salary). Names that never appear "
             "in the insight data emit a one-line stderr warning. Pass "
             f"'{NO_CATEGORY_LABEL}' to also drop the uncategorized-spend row."
+        ),
+    )
+    _ = parser.add_argument(
+        "-f",
+        "--filter",
+        action="append",
+        default=[],
+        metavar="PREFIX",
+        help=(
+            "Add an informational row to the CSV (below 'total') summing every "
+            "withdrawal whose description starts with PREFIX (case-insensitive). "
+            "Repeatable (e.g. --filter AMZN --filter COSTCO). The row sits below "
+            "'total' and is intentionally NOT included in it, since each matching "
+            "withdrawal already lives in some category's row. Prefixes that match "
+            "nothing in the range emit a one-line stderr warning and a zero row."
         ),
     )
     _ = parser.add_argument(
@@ -297,6 +401,49 @@ def main() -> None:
     csv_rows.append(
         (TOTAL_LABEL, *(_format(total_per_month[m]) for m in months), _format(total_avg)),
     )
+
+    filter_totals: dict[str, dict[str, Decimal]] = {}
+    if args.filter:
+        console.print(
+            f"Walking withdrawals across {args.start} \u2192 {end_month} "
+            + f"for {len(args.filter)} filter(s)\u2026",
+            highlight=False,
+        )
+        filter_totals, match_counts, n_filter_skipped = _collect_filters(
+            months,
+            currency=args.currency,
+            filters=args.filter,
+            parser=parser,
+        )
+        if n_filter_skipped:
+            console.print(
+                f"  (skipped {n_filter_skipped} other-currency withdrawal split(s) "
+                + "while computing filters)",
+                highlight=False,
+            )
+        for prefix in args.filter:
+            per_month = filter_totals[prefix]
+            n_matches = match_counts[prefix]
+            row_total = sum(per_month.values(), Decimal(0))
+            row_avg = _average(per_month, months)
+            if n_matches == 0:
+                console.print(
+                    f"warning: --filter {prefix!r} matched no withdrawals in the date range",
+                    style="yellow",
+                    highlight=False,
+                )
+            console.print(
+                f"  {_filter_label(prefix)}: {n_matches} match(es); "
+                + f"total={_format(row_total)}, average={_format(row_avg)}",
+                highlight=False,
+            )
+            csv_rows.append(
+                (
+                    _filter_label(prefix),
+                    *(_format(per_month[m]) for m in months),
+                    _format(row_avg),
+                ),
+            )
 
     if not kept_names and not include_no_category:
         console.print(

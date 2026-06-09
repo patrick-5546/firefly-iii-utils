@@ -358,3 +358,36 @@ def iter_insight_expense_no_category(
     )
     response.raise_for_status()
     yield from InsightTotalAdapter.validate_python(response.json())
+
+
+def iter_withdrawals(*, start: str, end: str) -> Iterator[TransactionSplit]:
+    """Yield every withdrawal split between ``start`` and ``end`` (inclusive).
+
+    Wraps ``GET /api/v1/transactions`` with ``type=withdrawal`` and
+    flattens each transaction group's ``attributes.transactions`` into
+    individual splits. Pagination, auth, and error propagation mirror
+    :func:`iter_transactions_for_category`. The caller is expected to
+    filter further (currency, description prefix, etc.) on its side.
+    """
+    url, headers = _auth_context_strict()
+    page = 1
+    while True:
+        response = requests.get(
+            f"{url}/api/v1/transactions",
+            headers=headers,
+            params={
+                "limit": _PAGE_LIMIT,
+                "page": page,
+                "start": start,
+                "end": end,
+                "type": "withdrawal",
+            },
+            timeout=_TIMEOUT,
+        )
+        response.raise_for_status()
+        body = TransactionListResponse.model_validate(response.json())
+        for entry in body.data:
+            yield from entry.attributes.transactions
+        if page >= body.meta.pagination.total_pages:
+            return
+        page += 1
