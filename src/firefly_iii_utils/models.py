@@ -288,6 +288,7 @@ class MonthlyCategorySpendArgs(BaseModel):
     start: str
     end: str | None
     exclude: list[str]
+    exclude_month: list[str]
     filter: list[str]
     currency: str
     no_color: bool

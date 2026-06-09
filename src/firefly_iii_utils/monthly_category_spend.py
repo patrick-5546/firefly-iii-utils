@@ -17,6 +17,13 @@ extra row per filter **below** the ``total`` row labeled
 matching transaction already lives in some category's row), so they
 are intentionally excluded from ``total`` to avoid double-counting.
 
+``-X/--exclude-month YYYY-MM`` drops specific months from the
+report entirely: the column disappears from the CSV, no API call is
+made for that month, and the constant-denominator ``average`` stays
+consistent because the excluded month is simply not in the kept
+list. Out-of-range exclusions emit a stderr warning; excluding
+every month in the range is a hard error.
+
 Single-currency only, defaulting to USD, mirroring
 :mod:`firefly_iii_utils.sum_budget_diffs`. Any insight entry or
 withdrawal split whose ``currency_code`` doesn't match ``--currency``
@@ -249,7 +256,9 @@ def main() -> None:
             "--filter PREFIX flags, also walk withdrawals once for the full range and "
             "emit an extra '[filter] PREFIX*' row per prefix BELOW the total row "
             "(intentionally excluded from total because each match already lives in "
-            "some category). Single-currency only (default USD); entries in a "
+            "some category). Use --exclude-month YYYY-MM to drop specific months "
+            "from the report entirely (no column, no API call, constant average "
+            "denominator). Single-currency only (default USD); entries in a "
             "different currency are silently skipped (the per-month progress line on "
             "stderr surfaces the skip count when non-zero)."
         ),
@@ -281,6 +290,22 @@ def main() -> None:
             "(e.g. --exclude Transfers --exclude Salary). Names that never appear "
             "in the insight data emit a one-line stderr warning. Pass "
             f"'{NO_CATEGORY_LABEL}' to also drop the uncategorized-spend row."
+        ),
+    )
+    _ = parser.add_argument(
+        "-X",
+        "--exclude-month",
+        action="append",
+        default=[],
+        type=_parse_month,
+        metavar="YYYY-MM",
+        help=(
+            "Drop a month from the report entirely. The column disappears from the "
+            "CSV, no API call is made for that month, and the constant-denominator "
+            "'average' stays consistent because the excluded month is not in the "
+            "kept list. Repeatable (e.g. --exclude-month 2025-08 --exclude-month "
+            "2026-02). Values outside [START, END] emit a stderr warning; excluding "
+            "every month in the range is a hard error."
         ),
     )
     _ = parser.add_argument(
@@ -332,12 +357,30 @@ def main() -> None:
 
     console = Console(stderr=True, no_color=args.no_color)
 
-    months = _months_in_range(args.start, end_month)
+    all_months = _months_in_range(args.start, end_month)
+    all_months_set = set(all_months)
+    excluded_months = set(args.exclude_month)
+    for stale in sorted(excluded_months - all_months_set):
+        console.print(
+            f"warning: --exclude-month {stale!r} is outside the range "
+            + f"{args.start}..{end_month}",
+            style="yellow",
+            highlight=False,
+        )
+    months = [m for m in all_months if m not in excluded_months]
+    if not months:
+        parser.error(
+            f"every month in {args.start}..{end_month} is in --exclude-month; "
+            + "nothing to report. Widen the range or drop some --exclude-month values."
+        )
+    n_dropped = len(all_months) - len(months)
     excludes = set(args.exclude)
 
+    dropped_suffix = f" (dropped {n_dropped} month(s) via --exclude-month)" if n_dropped else ""
     console.print(
         f"Fetching expense insight for {len(months)} month(s) "
-        + f"({args.start} \u2192 {end_month}) in currency {args.currency!r}\u2026",
+        + f"({args.start} \u2192 {end_month}) in currency {args.currency!r}"
+        + f"{dropped_suffix}\u2026",
         highlight=False,
     )
 
