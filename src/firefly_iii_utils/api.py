@@ -11,6 +11,10 @@ from .models import (
     BudgetLimitData,
     BudgetLimitListResponse,
     CategoryListResponse,
+    InsightGroupAdapter,
+    InsightGroupEntry,
+    InsightTotalAdapter,
+    InsightTotalEntry,
     TagListResponse,
     TransactionListResponse,
     TransactionSingleResponse,
@@ -306,3 +310,51 @@ def iter_budget_limits(*, start: str, end: str) -> Iterator[BudgetLimitData]:
         if page >= body.meta.pagination.total_pages:
             return
         page += 1
+
+
+def iter_insight_expense_categories(
+    *,
+    start: str,
+    end: str,
+) -> Iterator[InsightGroupEntry]:
+    """Yield every entry from ``GET /api/v1/insight/expense/category``.
+
+    Both ``start`` and ``end`` (``YYYY-MM-DD``, inclusive) are required
+    by Firefly III. The endpoint returns a flat ``application/json``
+    array (not JSON-API and not paginated) with one entry per
+    ``(category, currency)`` pair whose expenses fall in the range.
+    The ``Accept`` header is overridden to ``application/json`` to
+    match the endpoint's content type (same trick as
+    :func:`lookup_category_id`).
+    """
+    url, headers = _auth_context_strict()
+    response = requests.get(
+        f"{url}/api/v1/insight/expense/category",
+        headers={**headers, "accept": "application/json"},
+        params={"start": start, "end": end},
+        timeout=_TIMEOUT,
+    )
+    response.raise_for_status()
+    yield from InsightGroupAdapter.validate_python(response.json())
+
+
+def iter_insight_expense_no_category(
+    *,
+    start: str,
+    end: str,
+) -> Iterator[InsightTotalEntry]:
+    """Yield every entry from ``GET /api/v1/insight/expense/no-category``.
+
+    Sister of :func:`iter_insight_expense_categories` for the
+    uncategorized-only bucket: same response shape minus the ``id`` /
+    ``name`` fields, since there is a single bucket split per-currency.
+    """
+    url, headers = _auth_context_strict()
+    response = requests.get(
+        f"{url}/api/v1/insight/expense/no-category",
+        headers={**headers, "accept": "application/json"},
+        params={"start": start, "end": end},
+        timeout=_TIMEOUT,
+    )
+    response.raise_for_status()
+    yield from InsightTotalAdapter.validate_python(response.json())

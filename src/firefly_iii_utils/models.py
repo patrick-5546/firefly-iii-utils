@@ -242,3 +242,50 @@ class SumBudgetDiffsArgs(BaseModel):
     year: int = Field(ge=1900, le=9999)
     currency: str
     no_color: bool
+
+
+class InsightGroupEntry(BaseModel):
+    """One entry from ``GET /api/v1/insight/expense/category``.
+
+    The insight endpoints serve a flat ``application/json`` array
+    (not JSON-API), so this model is consumed via a
+    :class:`pydantic.TypeAdapter`. Each entry is one
+    ``(category, currency)`` pair; ``difference`` is a signed string
+    (negative for expenses) that the caller must parse via
+    :func:`firefly_iii_utils.parsing.parse_amount`. ``extra="ignore"``
+    matches the convention used by :class:`TransactionSplit` so a
+    schema bump (e.g. adding ``difference_float``) does not break us.
+    """
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+
+    id: str
+    name: str
+    difference: str
+    currency_code: str
+
+
+class InsightTotalEntry(BaseModel):
+    """One entry from ``GET /api/v1/insight/expense/no-category``.
+
+    Same shape as :class:`InsightGroupEntry` minus the ``id`` / ``name``
+    fields, since the endpoint returns a single bucket (uncategorized
+    expenses) split per-currency.
+    """
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+
+    difference: str
+    currency_code: str
+
+
+InsightGroupAdapter: TypeAdapter[list[InsightGroupEntry]] = TypeAdapter(list[InsightGroupEntry])
+InsightTotalAdapter: TypeAdapter[list[InsightTotalEntry]] = TypeAdapter(list[InsightTotalEntry])
+
+
+class MonthlyCategorySpendArgs(BaseModel):
+    start: str
+    end: str | None
+    exclude: list[str]
+    currency: str
+    no_color: bool

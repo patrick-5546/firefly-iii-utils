@@ -355,6 +355,40 @@ them atomically and they don't need a counterpart. As with
 `firefly-iii-guess-categories`, the script errors out if any
 transaction in the category has more than one split.
 
+### `firefly-iii-monthly-category-spend`
+
+> Per-category monthly spend totals plus average across a month range
+
+For a `start` / `end` month range (both `YYYY-MM`, inclusive), calls
+`GET /api/v1/insight/expense/category` once per month, sums each
+category's expenses, and emits a wide CSV on stdout with one row per
+category, one column per month, and a final `average` column. A
+synthetic `(no category)` row covers uncategorized spending (one extra
+call per month to `GET /api/v1/insight/expense/no-category`); a final
+`total` row sums every kept row column-by-column.
+
+```sh
+# Single month (end defaults to start):
+uv run firefly-iii-monthly-category-spend 2026-06
+
+# Month range:
+uv run firefly-iii-monthly-category-spend 2026-01 2026-06
+
+# Drop specific categories from the output and the 'total' row
+# (repeatable; '(no category)' also accepted to drop the uncategorized row):
+uv run firefly-iii-monthly-category-spend --exclude Transfers --exclude Salary 2026-01 2026-06
+
+# Override the currency; entries in any other currency are silently dropped:
+uv run firefly-iii-monthly-category-spend --currency EUR 2026-01 2026-06
+
+# Redirect to a file (auto-detected as non-TTY -> plain CSV, no escape codes):
+uv run firefly-iii-monthly-category-spend 2026-01 2026-06 > spend.csv
+
+# Disable column colors explicitly (also auto-disabled when stdout
+# isn't a TTY or when the NO_COLOR environment variable is set):
+uv run firefly-iii-monthly-category-spend --no-color 2026-01 2026-06
+```
+
 ### `firefly-iii-sum-budget-diffs`
 
 > Sum monthly budget differences across a calendar year
