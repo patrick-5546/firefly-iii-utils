@@ -255,6 +255,9 @@ uv run firefly-iii-guess-categories YYYY-MM-DD
 # codes):
 uv run firefly-iii-guess-categories YYYY-MM-DD > guessed.csv
 
+# List the Copilot models available to the current user:
+uv run firefly-iii-guess-categories --list-models
+
 # Override the model used for guessing (default: gpt-5-mini):
 uv run firefly-iii-guess-categories --model gpt-5.4-mini YYYY-MM-DD
 

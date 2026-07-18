@@ -169,8 +169,9 @@ class Args(BaseModel):
 
 
 class ExportArgs(BaseModel):
-    prefix: str
+    prefix: str | None
     model: str
+    list_models: bool
     no_guess: bool
     no_color: bool
 

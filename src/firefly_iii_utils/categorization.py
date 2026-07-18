@@ -23,6 +23,13 @@ LLM_TIMEOUT_SECONDS = 180.0
 _GuessesAdapter: TypeAdapter[dict[str, str]] = TypeAdapter(dict[str, str])
 
 
+async def available_models() -> list[tuple[str, str]]:
+    """Return the model IDs and display names available to Copilot."""
+    async with CopilotClient() as client:
+        models = await client.list_models()
+    return [(model.id, model.name) for model in models]
+
+
 class TransactionLike(Protocol):
     """Structural type for a transaction the LLM can categorize.
 

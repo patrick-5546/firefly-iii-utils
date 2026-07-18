@@ -150,6 +150,7 @@ def main() -> None:
     )
     _ = parser.add_argument(
         "prefix",
+        nargs="?",
         help="Case-sensitive tag-name prefix; every tag whose name starts with this is included.",
     )
     _ = parser.add_argument(
@@ -161,6 +162,11 @@ def main() -> None:
             f"{categorization.DEFAULT_MODEL}). Examples: gpt-5, gpt-5-mini, "
             "claude-sonnet-4.5."
         ),
+    )
+    _ = parser.add_argument(
+        "--list-models",
+        action="store_true",
+        help="List the Copilot models available to the current user and exit.",
     )
     _ = parser.add_argument(
         "-n",
@@ -183,6 +189,15 @@ def main() -> None:
         ),
     )
     args = ExportArgs.model_validate(vars(parser.parse_args()))
+
+    if args.list_models:
+        models = asyncio.run(categorization.available_models())
+        id_width = max((len(model_id) for model_id, _ in models), default=0)
+        for model_id, name in models:
+            print(f"{model_id:<{id_width}}  {name}")
+        return
+    if args.prefix is None:
+        parser.error("the following arguments are required: prefix (unless --list-models is used)")
 
     _ = load_dotenv()
 
