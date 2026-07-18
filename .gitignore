@@ -12,4 +12,6 @@ wheels/
 # Private files
 .env
 configs/account_mappings.json
+configs/category_hints.md
 transactions*/
+guesses*/

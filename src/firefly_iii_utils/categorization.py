@@ -17,10 +17,13 @@ from copilot.session_events import AssistantMessageData
 from pydantic import TypeAdapter, ValidationError
 from rich.console import Console
 
-DEFAULT_MODEL = "gpt-5-mini"
+from .paths import CONFIGS_DIR
+
+DEFAULT_MODEL = "gpt-5.6-luna"
 LLM_TIMEOUT_SECONDS = 180.0
 NANO_AIU_PER_AI_CREDIT = 1_000_000_000
 USD_PER_AI_CREDIT = 0.01
+CATEGORY_HINTS_PATH = CONFIGS_DIR / "category_hints.md"
 
 _GuessesAdapter: TypeAdapter[dict[str, str]] = TypeAdapter(dict[str, str])
 
@@ -30,6 +33,13 @@ def _format_cost(total_nano_aiu: float) -> str:
     credits_label = f"{credits:,.9f}".rstrip("0").rstrip(".")
     usd_label = f"{credits * USD_PER_AI_CREDIT:,.9f}".rstrip("0").rstrip(".")
     return f"{credits_label} AI credits (${usd_label})"
+
+
+def _load_category_hints() -> str | None:
+    try:
+        return CATEGORY_HINTS_PATH.read_text(encoding="utf-8").strip() or None
+    except FileNotFoundError:
+        return None
 
 
 async def available_models() -> list[tuple[str, str]]:
@@ -82,8 +92,21 @@ def _strip_json_fences(text: str) -> str:
     return stripped.strip()
 
 
-def _build_prompt(rows: Sequence[TransactionLike], categories: Sequence[str]) -> str:
+def _build_prompt(
+    rows: Sequence[TransactionLike],
+    categories: Sequence[str],
+    category_hints: str | None,
+) -> str:
     category_block = "\n".join(f"- {c}" for c in categories)
+    hints_block = ""
+    if category_hints:
+        hints_block = (
+            "Category Hints (apply this user-provided guidance when relevant; output category "
+            "names must still come from Allowed Categories):\n"
+            "<category_hints>\n"
+            f"{category_hints}\n"
+            "</category_hints>\n\n"
+        )
     transaction_lines: list[str] = []
     for row in rows:
         transaction_lines.append(
@@ -101,6 +124,7 @@ def _build_prompt(rows: Sequence[TransactionLike], categories: Sequence[str]) ->
         "fits, return an empty string for that transaction.\n\n"
         'Allowed Categories (use exactly one of these strings, case-sensitive, or ""):\n'
         f"{category_block}\n\n"
+        f"{hints_block}"
         "Transactions:\n"
         f"{transaction_block}\n\n"
         "Respond with ONLY a single raw JSON object mapping each transaction id (as a "
@@ -126,9 +150,11 @@ async def guess(
     """
     if not rows:
         return {}
-    prompt = _build_prompt(rows, categories)
+    category_hints = _load_category_hints()
+    prompt = _build_prompt(rows, categories, category_hints)
+    hints_label = f" using {CATEGORY_HINTS_PATH.name}" if category_hints else ""
     console.print(
-        f"Asking Copilot ({model}) to categorize {len(rows)} transaction(s)\u2026",
+        f"Asking Copilot ({model}) to categorize {len(rows)} transaction(s){hints_label}\u2026",
         highlight=False,
     )
     async with (

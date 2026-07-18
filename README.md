@@ -246,6 +246,18 @@ allow-list is silently blanked and surfaced as a warning on stderr, so
 the worst case is a row with an empty `category` cell that you fill in
 by hand.
 
+Before each model call, the command reads the optional
+`configs/category_hints.md` file and includes its full Markdown contents as
+user-specific guidance. Add merchant, amount, account, or other categorization
+rules there, for example:
+
+```md
+- Small purchases at COSTCO WHSE are from the food court
+```
+
+Hints guide the model but do not expand the category allow-list: every returned
+category must exactly match an existing Firefly III category.
+
 ```sh
 # Print the CSV (colorized when stdout is a TTY; status / progress goes
 # to stderr):
@@ -258,7 +270,7 @@ uv run firefly-iii-guess-categories YYYY-MM-DD > guessed.csv
 # List the Copilot models available to the current user:
 uv run firefly-iii-guess-categories --list-models
 
-# Override the model used for guessing (default: gpt-5-mini):
+# Override the model used for guessing (default: gpt-5.6-luna):
 uv run firefly-iii-guess-categories --model gpt-5.4-mini YYYY-MM-DD
 
 # Skip the LLM call entirely (writes the CSV with a blank `category`
