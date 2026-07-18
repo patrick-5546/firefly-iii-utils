@@ -148,10 +148,6 @@ uv run firefly-iii-import-data --dry-run path/to/Chase1234_Activity.CSV
 # directory. Processing stops on the first failure.
 uv run firefly-iii-import-data path/to/transactions/
 uv run firefly-iii-import-data --dry-run path/to/transactions/
-
-# Disable colored output (also auto-disabled when stdout isn't a TTY
-# or when the NO_COLOR environment variable is set):
-uv run firefly-iii-import-data --no-color path/to/transactions/
 ```
 
 Auto-detection iterates the templates registered in
@@ -259,10 +255,6 @@ uv run firefly-iii-guess-categories YYYY-MM-DD
 # codes):
 uv run firefly-iii-guess-categories YYYY-MM-DD > guessed.csv
 
-# Disable column colors for the CSV on stdout (also auto-disabled when
-# stdout isn't a TTY or when the NO_COLOR environment variable is set):
-uv run firefly-iii-guess-categories --no-color YYYY-MM-DD
-
 # Override the model used for guessing (default: gpt-5-mini):
 uv run firefly-iii-guess-categories --model gpt-5.4-mini YYYY-MM-DD
 
@@ -298,10 +290,6 @@ uv run firefly-iii-import-categories path/to/guessed.csv
 
 # Validate everything but skip the PUTs (no changes made):
 uv run firefly-iii-import-categories --dry-run path/to/guessed.csv
-
-# Disable colored output (also auto-disabled when stderr isn't a TTY
-# or when the NO_COLOR environment variable is set):
-uv run firefly-iii-import-categories --no-color path/to/guessed.csv
 ```
 
 ### `firefly-iii-find-unmatched-transfers`
@@ -334,11 +322,6 @@ uv run firefly-iii-find-unmatched-transfers 2026-06 > unmatched.csv
 # re-investigate); any row whose transaction_id is in that file is
 # stripped from the new output.
 uv run firefly-iii-find-unmatched-transfers --reviewed unmatched.csv 2026-01 2026-06 > unmatched_v2.csv
-
-# Disable column colors for the CSVs on stdout and the matched-pairs
-# CSV on stderr (also auto-disabled when the respective stream isn't
-# a TTY or when the NO_COLOR environment variable is set):
-uv run firefly-iii-find-unmatched-transfers --no-color 2026-06
 ```
 
 Within the requested date range, every `Transfers`-category
@@ -391,10 +374,6 @@ uv run firefly-iii-monthly-category-spend --currency EUR 2026-01 2026-06
 
 # Redirect to a file (auto-detected as non-TTY -> plain CSV, no escape codes):
 uv run firefly-iii-monthly-category-spend 2026-01 2026-06 > spend.csv
-
-# Disable column colors explicitly (also auto-disabled when stdout
-# isn't a TTY or when the NO_COLOR environment variable is set):
-uv run firefly-iii-monthly-category-spend --no-color 2026-01 2026-06
 ```
 
 ### `firefly-iii-sum-budget-diffs`
@@ -422,10 +401,6 @@ uv run firefly-iii-sum-budget-diffs --currency EUR 2026
 # Redirect to a file (auto-detected as non-TTY -> plain CSV, no escape
 # codes):
 uv run firefly-iii-sum-budget-diffs 2026 > budget-diffs.csv
-
-# Disable column colors explicitly (also auto-disabled when stdout
-# isn't a TTY or when the NO_COLOR environment variable is set):
-uv run firefly-iii-sum-budget-diffs --no-color 2026
 ```
 
 ### `firefly-iii-compare-guesses`
@@ -453,10 +428,6 @@ uv run firefly-iii-compare-guesses --top-confusions 15
 # Redirect to a file (auto-detected as non-TTY -> plain output, no
 # escape codes):
 uv run firefly-iii-compare-guesses > stats.txt
-
-# Disable colors explicitly (also auto-disabled when stdout isn't
-# a TTY or when the NO_COLOR environment variable is set):
-uv run firefly-iii-compare-guesses --no-color
 ```
 
 ## Development
