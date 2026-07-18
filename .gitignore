@@ -12,4 +12,4 @@ wheels/
 # Private files
 .env
 configs/account_mappings.json
-transactions/
+transactions*/
