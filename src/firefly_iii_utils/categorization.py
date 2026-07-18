@@ -19,8 +19,17 @@ from rich.console import Console
 
 DEFAULT_MODEL = "gpt-5-mini"
 LLM_TIMEOUT_SECONDS = 180.0
+NANO_AIU_PER_AI_CREDIT = 1_000_000_000
+USD_PER_AI_CREDIT = 0.01
 
 _GuessesAdapter: TypeAdapter[dict[str, str]] = TypeAdapter(dict[str, str])
+
+
+def _format_cost(total_nano_aiu: float) -> str:
+    credits = total_nano_aiu / NANO_AIU_PER_AI_CREDIT
+    credits_label = f"{credits:,.9f}".rstrip("0").rstrip(".")
+    usd_label = f"{credits * USD_PER_AI_CREDIT:,.9f}".rstrip("0").rstrip(".")
+    return f"{credits_label} AI credits (${usd_label})"
 
 
 async def available_models() -> list[tuple[str, str]]:
@@ -131,6 +140,13 @@ async def guess(
         ) as session,
     ):
         event = await session.send_and_wait(prompt, timeout=LLM_TIMEOUT_SECONDS)
+        usage = await session.rpc.usage.get_metrics()
+    cost = "unavailable" if usage.total_nano_aiu is None else _format_cost(usage.total_nano_aiu)
+    console.print(
+        f"Copilot usage: {usage.last_call_input_tokens:,} input tokens, "
+        + f"{usage.last_call_output_tokens:,} output tokens; cost: {cost}",
+        highlight=False,
+    )
     if event is None or not isinstance(event.data, AssistantMessageData):
         raise RuntimeError(
             "Copilot returned no assistant message before becoming idle; "
