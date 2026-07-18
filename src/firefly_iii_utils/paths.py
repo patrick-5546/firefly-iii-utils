@@ -10,7 +10,7 @@ ACCOUNT_MAPPINGS_PATH = CONFIGS_DIR / "account_mappings.json"
 TEMPLATES: dict[str, TemplateInfo] = {
     "chase_cc": TemplateInfo(
         path=CONFIGS_DIR / "chase_cc.json",
-        filename_pattern=r"Chase(\d{4})_.*\.CSV$",
+        filename_pattern=r"Chase(\d{4})_.*\.(?i:csv)$",
     ),
     "cap1_cc": TemplateInfo(
         path=CONFIGS_DIR / "cap1_cc.json",
@@ -19,7 +19,7 @@ TEMPLATES: dict[str, TemplateInfo] = {
     ),
     "bmo_harris_cc": TemplateInfo(
         path=CONFIGS_DIR / "bmo_harris_cc.json",
-        filename_pattern=r"^(transactions)_\d{9}\.csv$",
+        filename_pattern=r"^(transactions)_\d+\.csv$",
     ),
     "wf_acct": TemplateInfo(
         path=CONFIGS_DIR / "wf_acct.json",
