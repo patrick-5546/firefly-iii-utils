@@ -259,12 +259,10 @@ Hints guide the model but do not expand the category allow-list: every returned
 category must exactly match an existing Firefly III category.
 
 ```sh
-# Print the CSV (colorized when stdout is a TTY; status / progress goes
-# to stderr):
+# Print the CSV:
 uv run firefly-iii-guess-categories YYYY-MM-DD
 
-# Redirect to a file (auto-detected as non-TTY -> plain CSV, no escape
-# codes):
+# Redirect to a file:
 uv run firefly-iii-guess-categories YYYY-MM-DD > guessed.csv
 
 # List the Copilot models available to the current user:
@@ -322,14 +320,12 @@ investigated by hand.
 
 ```sh
 # Single month — prints the unmatched-transfers CSV for June 2026,
-# colored when stdout is a TTY:
 uv run firefly-iii-find-unmatched-transfers 2026-06
 
 # Month range (inclusive on both ends):
 uv run firefly-iii-find-unmatched-transfers 2026-01 2026-06
 
-# Redirect to a file (auto-detected as non-TTY -> plain CSV, no escape
-# codes):
+# Redirect to a file:
 uv run firefly-iii-find-unmatched-transfers 2026-06 > unmatched.csv
 
 # Carry a previous review forward: re-run with --reviewed pointed at
@@ -387,7 +383,7 @@ uv run firefly-iii-monthly-category-spend --filter 'AMAZON MKTPL' --filter 'COST
 # Override the currency; entries in any other currency are silently dropped:
 uv run firefly-iii-monthly-category-spend --currency EUR 2026-01 2026-06
 
-# Redirect to a file (auto-detected as non-TTY -> plain CSV, no escape codes):
+# Redirect to a file:
 uv run firefly-iii-monthly-category-spend 2026-01 2026-06 > spend.csv
 ```
 
@@ -403,7 +399,7 @@ are skipped, on the assumption that those are future months or months
 whose transactions have not yet been imported.
 
 ```sh
-# Current calendar year, USD, colored on TTY:
+# Current calendar year, USD
 uv run firefly-iii-sum-budget-diffs
 
 # Explicit year:
@@ -413,8 +409,7 @@ uv run firefly-iii-sum-budget-diffs 2026
 # every entry in its spent[] array; mismatches cause a hard error):
 uv run firefly-iii-sum-budget-diffs --currency EUR 2026
 
-# Redirect to a file (auto-detected as non-TTY -> plain CSV, no escape
-# codes):
+# Redirect to a file:
 uv run firefly-iii-sum-budget-diffs 2026 > budget-diffs.csv
 ```
 
@@ -433,14 +428,13 @@ those shared misses are excluded.
 
 ```sh
 # Compare every guessed.*.csv in the current directory against
-# guessed.golden.csv (tables are colored when stdout is a TTY):
+# guessed.golden.csv:
 uv run firefly-iii-compare-guesses
 
 # Same, against CSVs in a different directory:
 uv run firefly-iii-compare-guesses path/to/exports/
 
-# Redirect to a file (auto-detected as non-TTY -> plain output, no
-# escape codes):
+# Redirect to a file:
 uv run firefly-iii-compare-guesses > stats.txt
 ```
 
