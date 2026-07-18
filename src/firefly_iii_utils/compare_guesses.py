@@ -8,8 +8,8 @@ accuracy stats to stdout:
 
 * overall accuracy per model,
 * per-category accuracy (golden category vs each model's pick),
-* top-N confusions per model (golden -> predicted),
-* pairwise inter-model agreement and a unanimous-agreement breakdown.
+* transaction-level misses shared by every model and additional misses per model,
+* pairwise inter-model agreement.
 
 The script is pure CSV analysis — no LLM / Copilot SDK calls, no
 Firefly III API calls.
@@ -38,7 +38,6 @@ CSV_HEADER = (
 
 GOLDEN_FILENAME = "guessed.golden.csv"
 MODEL_GLOB = "guessed.*.csv"
-DEFAULT_TOP_CONFUSIONS = 8
 BLANK_LABEL = "<blank>"
 
 
@@ -206,17 +205,6 @@ def _per_category_correct(golden: list[GuessRow], rows: list[GuessRow]) -> Count
     return out
 
 
-def _confusions(golden: list[GuessRow], rows: list[GuessRow]) -> Counter[tuple[str, str]]:
-    """Return ``Counter[(golden_cat, predicted_cat)]`` over labeled-row mismatches."""
-    confusion: Counter[tuple[str, str]] = Counter()
-    for g, r in zip(golden, rows, strict=True):
-        if g.category == "" or r.category == g.category:
-            continue
-        pred = r.category if r.category != "" else BLANK_LABEL
-        confusion[(g.category, pred)] += 1
-    return confusion
-
-
 def _print_summary(
     golden_path: Path,
     model_paths: list[Path],
@@ -287,35 +275,10 @@ def _print_per_category(
     console.print(table)
 
 
-def _print_confusions(
-    model_names: list[str],
-    confusions: dict[str, Counter[tuple[str, str]]],
-    top_n: int,
-    console: Console,
-) -> None:
-    console.print(
-        f"\nTop {top_n} confusions per model",
-        style="bold",
-        highlight=False,
-    )
-    for name in model_names:
-        table = Table(title=name, title_style="bold cyan")
-        table.add_column("Count", justify="right")
-        table.add_column("Golden", style="green")
-        table.add_column("Predicted", style="red")
-        items = confusions[name].most_common(top_n)
-        if not items:
-            table.add_row("-", "-", "no misses")
-        for (golden_cat, pred), n in items:
-            table.add_row(str(n), golden_cat, pred)
-        console.print(table)
-
-
 def _print_agreement(
     model_names: list[str],
     rows_by_model: dict[str, list[GuessRow]],
     golden: list[GuessRow],
-    top_n: int,
     console: Console,
 ) -> None:
     n = len(golden)
@@ -337,7 +300,7 @@ def _print_agreement(
 
     all_agree = 0
     unanimous_correct = 0
-    unanimous_wrong: Counter[tuple[str, str]] = Counter()
+    unanimous_wrong = 0
     for index, g in enumerate(golden):
         preds = [rows_by_model[m][index].category for m in model_names]
         if len(set(preds)) != 1:
@@ -349,29 +312,107 @@ def _print_agreement(
         if pred == g.category:
             unanimous_correct += 1
         else:
-            label = pred if pred != "" else BLANK_LABEL
-            unanimous_wrong[(g.category, label)] += 1
+            unanimous_wrong += 1
 
-    unanimous_wrong_count = sum(unanimous_wrong.values())
     pct = (all_agree / n * 100) if n else 0.0
     summary = f"\nAll {len(model_names)} models agree on {all_agree}/{n} row(s) ({pct:.1f}%)."
     if all_agree:
         summary += (
             f"\n  Unanimously correct: {unanimous_correct}"
-            + f"\n  Unanimously wrong:   {unanimous_wrong_count}"
+            + f"\n  Unanimously wrong:   {unanimous_wrong}"
         )
     console.print(summary, highlight=False)
-    if unanimous_wrong_count:
-        wrong_table = Table(
-            title=f"Top {top_n} unanimous-wrong patterns",
-            title_style="bold",
+
+
+def _prediction_label(category: str) -> str:
+    return category if category else BLANK_LABEL
+
+
+def _accounts_label(row: GuessRow) -> str:
+    return f"{row.source_account} -> {row.destination_account}"
+
+
+def _print_error_details(
+    model_names: list[str],
+    rows_by_model: dict[str, list[GuessRow]],
+    golden: list[GuessRow],
+    console: Console,
+) -> None:
+    common_wrong = [
+        index
+        for index, g in enumerate(golden)
+        if g.category
+        and all(rows_by_model[name][index].category != g.category for name in model_names)
+    ]
+    common_wrong_set = set(common_wrong)
+
+    console.print(
+        f"\nTransactions every model got wrong ({len(common_wrong)})",
+        style="bold",
+        highlight=False,
+    )
+    if not common_wrong:
+        console.print("None", highlight=False)
+    else:
+        table = Table(title_style="bold")
+        table.add_column("ID", style="cyan")
+        table.add_column("Date")
+        table.add_column("Description")
+        table.add_column("Amount", justify="right")
+        table.add_column("Accounts")
+        table.add_column("Golden", style="green")
+        table.add_column("Predictions", style="red")
+        for index in common_wrong:
+            g = golden[index]
+            predictions = "\n".join(
+                f"{name}: {_prediction_label(rows_by_model[name][index].category)}"
+                for name in model_names
+            )
+            table.add_row(
+                g.transaction_id,
+                g.date,
+                g.description,
+                g.amount,
+                _accounts_label(g),
+                g.category,
+                predictions,
+            )
+        console.print(table)
+
+    console.print("\nAdditional errors by model", style="bold", highlight=False)
+    for name in model_names:
+        additional_wrong = [
+            index
+            for index, g in enumerate(golden)
+            if index not in common_wrong_set
+            and g.category
+            and rows_by_model[name][index].category != g.category
+        ]
+        table = Table(
+            title=f"{name} ({len(additional_wrong)} additional error(s))",
+            title_style="bold cyan",
         )
-        wrong_table.add_column("Count", justify="right")
-        wrong_table.add_column("Golden", style="green")
-        wrong_table.add_column("All models said", style="red")
-        for (golden_cat, pred), count in unanimous_wrong.most_common(top_n):
-            wrong_table.add_row(str(count), golden_cat, pred)
-        console.print(wrong_table)
+        table.add_column("ID", style="cyan")
+        table.add_column("Date")
+        table.add_column("Description")
+        table.add_column("Amount", justify="right")
+        table.add_column("Accounts")
+        table.add_column("Golden", style="green")
+        table.add_column("Predicted", style="red")
+        if not additional_wrong:
+            table.add_row("-", "-", "no additional errors", "-", "-", "-", "-")
+        for index in additional_wrong:
+            g = golden[index]
+            table.add_row(
+                g.transaction_id,
+                g.date,
+                g.description,
+                g.amount,
+                _accounts_label(g),
+                g.category,
+                _prediction_label(rows_by_model[name][index].category),
+            )
+        console.print(table)
 
 
 def main() -> None:
@@ -381,7 +422,7 @@ def main() -> None:
             f"Auto-discovers the golden CSV and every other {MODEL_GLOB!r} file in "
             "the given directory (cwd by default), validates that they share the "
             "canonical header and row order, then prints overall accuracy, "
-            "per-category accuracy, top-N confusions per model, and pairwise "
+            "per-category accuracy, transaction-level errors, and pairwise "
             "inter-model agreement to stdout. No LLM / API calls."
         ),
     )
@@ -392,16 +433,6 @@ def main() -> None:
         help=(
             f"Directory containing {GOLDEN_FILENAME!r} and one or more "
             f"{MODEL_GLOB!r} files (default: current directory)."
-        ),
-    )
-    _ = parser.add_argument(
-        "-t",
-        "--top-confusions",
-        type=int,
-        default=DEFAULT_TOP_CONFUSIONS,
-        help=(
-            "How many top (golden -> predicted) miss patterns to show per "
-            f"model (default: {DEFAULT_TOP_CONFUSIONS})."
         ),
     )
     _ = parser.add_argument(
@@ -441,12 +472,11 @@ def main() -> None:
     per_model_correct = {
         name: _per_category_correct(golden, rows_by_model[name]) for name in model_names
     }
-    confusions = {name: _confusions(golden, rows_by_model[name]) for name in model_names}
 
     _print_overall(model_names, model_totals, console)
     _print_per_category(model_names, golden_totals, per_model_correct, console)
-    _print_confusions(model_names, confusions, args.top_confusions, console)
-    _print_agreement(model_names, rows_by_model, golden, args.top_confusions, console)
+    _print_error_details(model_names, rows_by_model, golden, console)
+    _print_agreement(model_names, rows_by_model, golden, console)
 
 
 if __name__ == "__main__":

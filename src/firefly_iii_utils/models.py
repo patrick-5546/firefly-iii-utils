@@ -191,7 +191,6 @@ class FindUnmatchedTransfersArgs(BaseModel):
 
 class CompareGuessesArgs(BaseModel):
     path: str
-    top_confusions: int = Field(ge=1)
     no_color: bool
 
 

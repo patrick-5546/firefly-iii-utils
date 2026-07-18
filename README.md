@@ -426,8 +426,10 @@ Auto-discovers `guessed.golden.csv` and every other `guessed.*.csv`
 file in the given directory (cwd by default), then prints
 human-readable accuracy stats to stdout: overall accuracy per
 model, per-category accuracy (golden category vs each model's
-pick), top-N confusions per model, and pairwise inter-model
-agreement.
+pick), and pairwise inter-model agreement. It also lists every
+labeled transaction that all models got wrong, including each
+model's prediction, followed by each model's remaining errors after
+those shared misses are excluded.
 
 ```sh
 # Compare every guessed.*.csv in the current directory against
@@ -436,9 +438,6 @@ uv run firefly-iii-compare-guesses
 
 # Same, against CSVs in a different directory:
 uv run firefly-iii-compare-guesses path/to/exports/
-
-# Show more / fewer top-N confusions per model (default 8):
-uv run firefly-iii-compare-guesses --top-confusions 15
 
 # Redirect to a file (auto-detected as non-TTY -> plain output, no
 # escape codes):
