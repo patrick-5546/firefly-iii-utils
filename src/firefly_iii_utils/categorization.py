@@ -87,8 +87,7 @@ def _strip_json_fences(text: str) -> str:
     if stripped.startswith("```"):
         first_newline = stripped.find("\n")
         stripped = stripped[first_newline + 1 :] if first_newline != -1 else stripped[3:]
-        if stripped.endswith("```"):
-            stripped = stripped[:-3]
+        stripped = stripped.removesuffix("```")
     return stripped.strip()
 
 

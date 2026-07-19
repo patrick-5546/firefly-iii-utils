@@ -29,7 +29,7 @@ import argparse
 import calendar
 import csv
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import NamedTuple
@@ -97,7 +97,7 @@ class Row(NamedTuple):
 def _parse_month(value: str) -> str:
     """argparse ``type=`` validator for ``YYYY-MM`` month strings."""
     try:
-        _ = datetime.strptime(value, "%Y-%m")
+        _ = date.fromisoformat(f"{value}-01")
     except ValueError as exc:
         raise argparse.ArgumentTypeError(
             f"invalid month {value!r}; expected YYYY-MM (e.g. 2026-06)"

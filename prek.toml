@@ -22,9 +22,19 @@ require_serial = true
 priority = 10
 
 [[repos.hooks]]
-id = "basedpyright"
-name = "basedpyright"
-entry = "uv run basedpyright"
+id = "ty"
+name = "ty check"
+entry = "uv run ty check"
+language = "system"
+types_or = ["python", "pyi"]
+pass_filenames = false
+require_serial = true
+priority = 20
+
+[[repos.hooks]]
+id = "pyrefly"
+name = "pyrefly check"
+entry = "uv run pyrefly check"
 language = "system"
 types_or = ["python", "pyi"]
 pass_filenames = false

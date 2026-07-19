@@ -40,7 +40,7 @@ through positive already.
 import argparse
 import calendar
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 
 from dotenv import load_dotenv
@@ -84,7 +84,7 @@ def _filter_label(prefix: str) -> str:
 def _parse_month(value: str) -> str:
     """argparse ``type=`` validator for ``YYYY-MM`` month strings."""
     try:
-        _ = datetime.strptime(value, "%Y-%m")
+        _ = date.fromisoformat(f"{value}-01")
     except ValueError as exc:
         raise argparse.ArgumentTypeError(
             f"invalid month {value!r}; expected YYYY-MM (e.g. 2026-06)"
@@ -177,14 +177,14 @@ def _collect_month(
             n_skipped += 1
             continue
         try:
-            spend = -parse_amount(entry.difference)
+            uncategorized_spend = -parse_amount(entry.difference)
         except ValueError as exc:
             parser.error(
                 f"Uncategorized-insight entry for {month} has unparseable difference "
                 + f"{entry.difference!r}: {exc}"
             )
-        no_category[month] += spend
-        month_total += spend
+        no_category[month] += uncategorized_spend
+        month_total += uncategorized_spend
 
     return n_categories, month_total, n_skipped
 

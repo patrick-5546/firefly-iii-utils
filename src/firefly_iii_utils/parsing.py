@@ -11,7 +11,7 @@ from decimal import Decimal, InvalidOperation
 
 def parse_date(value: str) -> datetime:
     """Parse Firefly III's ISO 8601 date-time, tolerating a trailing ``Z``."""
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return datetime.fromisoformat(value)
 
 
 def format_date(value: str) -> str:

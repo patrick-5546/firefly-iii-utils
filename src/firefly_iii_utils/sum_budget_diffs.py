@@ -216,7 +216,7 @@ def main() -> None:
         "year",
         nargs="?",
         type=_parse_year,
-        default=datetime.now().year,
+        default=datetime.now().astimezone().year,
         help=(
             "Calendar year to summarize, e.g. 2026. Defaults to the current "
             "calendar year (%(default)s)."

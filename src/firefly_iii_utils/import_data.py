@@ -148,7 +148,7 @@ def _collect_csv_files(directory: Path, parser: argparse.ArgumentParser) -> list
     return files
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Upload a bank CSV to the Firefly III Data Importer's /autoupload endpoint.",
     )

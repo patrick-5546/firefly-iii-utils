@@ -26,17 +26,26 @@ firefly-iii-monthly-category-spend = "firefly_iii_utils.monthly_category_spend:m
 
 [dependency-groups]
 dev = [
-    "basedpyright>=1.39.6",
     "prek>=0.4.4",
+    "pyrefly>=1.1.1",
     "ruff>=0.15.16",
+    "ty>=0.0.61",
 ]
 
 [build-system]
 requires = ["uv_build>=0.11.19,<0.12.0"]
 build-backend = "uv_build"
 
+[tool.pyrefly]
+preset = "strict"
+
 [tool.ruff]
 line-length = 100
 
 [tool.ruff.lint]
-extend-select = ["B", "E501", "I", "SIM", "UP"]
+extend-select = ["B", "E501", "I", "SIM", "UP", "ANN", "PYI"]
+preview = true
+
+[tool.ty.rules]
+missing-type-argument = "error"
+possibly-unresolved-reference = "warn"
