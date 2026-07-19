@@ -441,6 +441,28 @@ uv run firefly-iii-compare-guesses > stats.txt
 ## Development
 
 This project is managed with [uv](https://docs.astral.sh/uv/).
+The root `Makefile` provides shortcuts for common development tasks.
+
+Set up a new clone by syncing dependencies and installing the Git hook:
+
+```sh
+make setup
+```
+
+Run all non-mutating formatting, lint, and type checks:
+
+```sh
+make check
+```
+
+Format Python and apply Ruff auto-fixes:
+
+```sh
+make format
+```
+
+Run `make help` to see the full list of available targets.
+
 Add a runtime dependency or a dev-only one:
 
 ```sh
@@ -456,17 +478,12 @@ uv sync --upgrade
 ```
 
 Git hooks are managed with [prek](https://github.com/j178/prek), a drop-in
-pre-commit alternative. Install the hook once per clone:
+pre-commit alternative. The `make setup` command installs the hook, which then
+runs automatically on `git commit`. To run all hooks against all files on
+demand:
 
 ```sh
-uv run prek install
-```
-
-The hooks then run automatically on `git commit`.
-To run all hooks against all files on demand:
-
-```sh
-uv run prek run --all-files
+make hooks
 ```
 
 ## Resources
