@@ -260,21 +260,21 @@ category must exactly match an existing Firefly III category.
 
 ```sh
 # Print the CSV:
-uv run firefly-iii-guess-categories YYYY-MM-DD
+uv run firefly-iii-guess-categories 2026-07-13
 
 # Redirect to a file:
-uv run firefly-iii-guess-categories YYYY-MM-DD > guessed.csv
+uv run firefly-iii-guess-categories 2026-07-13 > guessed.csv
 
 # List the Copilot models available to the current user:
 uv run firefly-iii-guess-categories --list-models
 
 # Override the model used for guessing (default: gpt-5.6-luna):
-uv run firefly-iii-guess-categories --model gpt-5.4-mini YYYY-MM-DD
+uv run firefly-iii-guess-categories --model gpt-5.4-mini 2026-07-13
 
 # Skip the LLM call entirely (writes the CSV with a blank `category`
 # column — useful for a quick uncategorized export without a model
 # call):
-uv run firefly-iii-guess-categories --no-guess YYYY-MM-DD
+uv run firefly-iii-guess-categories --no-guess 2026-07-13
 ```
 
 The script does not handle split transactions or transactions that
