@@ -1,7 +1,10 @@
 import argparse
+import csv
 import io
 import json
 import os
+import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 import requests
@@ -25,6 +28,88 @@ from .output import (
     print_response,
 )
 from .paths import TEMPLATES
+
+DATE_ROLES = {
+    "date_transaction",
+    "date_interest",
+    "date_due",
+    "date_payment",
+    "date_process",
+    "date_book",
+    "date_invoice",
+}
+PHP_DATE_DIRECTIVES = {
+    "d": "%d",
+    "j": "%d",
+    "m": "%m",
+    "n": "%m",
+    "Y": "%Y",
+    "y": "%y",
+}
+
+
+def _to_strptime_format(date_format: str) -> str:
+    locale_match = re.fullmatch(r"(?:(?:[a-z]{2}(?:_[A-Z]{2})?):)?(.+)", date_format)
+    if locale_match is None:
+        raise ValueError(f"Invalid importer date format {date_format!r}.")
+    php_format = locale_match.group(1).removeprefix("!")
+    python_parts: list[str] = []
+    escaped = False
+    for character in php_format:
+        if escaped:
+            python_parts.append("%%" if character == "%" else character)
+            escaped = False
+        elif character == "\\":
+            escaped = True
+        elif character in PHP_DATE_DIRECTIVES:
+            python_parts.append(PHP_DATE_DIRECTIVES[character])
+        elif character.isalpha():
+            raise ValueError(
+                f"Unsupported PHP date-format character {character!r} in {date_format!r}."
+            )
+        else:
+            python_parts.append("%%" if character == "%" else character)
+    if escaped:
+        raise ValueError(f"Date format {date_format!r} ends with an incomplete escape.")
+    return "".join(python_parts)
+
+
+def _validate_csv_dates(csv_bytes: bytes, roles: list[str], date_format: str) -> int:
+    date_columns = [(index, role) for index, role in enumerate(roles) if role in DATE_ROLES]
+    if not date_columns:
+        return 0
+
+    python_format = _to_strptime_format(date_format)
+    try:
+        reader = csv.reader(io.StringIO(csv_bytes.decode("utf-8-sig")))
+        try:
+            header = next(reader)
+        except StopIteration as exc:
+            raise ValueError("CSV is empty (no header row).") from exc
+        validated = 0
+        for row_number, row in enumerate(reader, start=2):
+            for column_index, role in date_columns:
+                column_name = (
+                    header[column_index]
+                    if column_index < len(header)
+                    else f"column {column_index + 1}"
+                )
+                if column_index >= len(row):
+                    raise ValueError(
+                        f"Row {row_number} is missing {column_name!r}, assigned role {role!r}."
+                    )
+                value = row[column_index].strip()
+                try:
+                    _ = datetime.strptime(value, python_format).replace(tzinfo=UTC)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"Row {row_number}, column {column_name!r} ({role}) has date "
+                        + f"{value!r}, which does not match template format {date_format!r}."
+                    ) from exc
+                validated += 1
+    except (UnicodeDecodeError, csv.Error) as exc:
+        raise ValueError(f"Could not parse CSV while validating dates: {exc}") from exc
+    return validated
 
 
 def _process_one(
@@ -90,6 +175,11 @@ def _process_one(
             parser.error(f"Preprocessing {csv_path.name} for {template_name!r} failed: {exc}")
         preprocessing_summary = f"{template_name} {summary}"
 
+    try:
+        validated_date_count = _validate_csv_dates(csv_bytes, template.roles, template.date)
+    except ValueError as exc:
+        parser.error(f"Date validation failed for {csv_path.name}: {exc}")
+
     template_label = f"{template_name}{' (auto-detected)' if auto_detected else ''}"
 
     if dry_run:
@@ -109,6 +199,10 @@ def _process_one(
         print(f"    default_account: {account_label}")
         print(f"    custom_tag:      {template.custom_tag!r}")
         print(f"    roles:           {template.roles}")
+        print(
+            f"    dates:           validated {validated_date_count} value(s) "
+            + f"using {template.date!r}"
+        )
         size_label = f"{len(csv_bytes)} bytes"
         if preprocessor is not None:
             size_label += f", preprocessed from {csv_path.stat().st_size} on-disk bytes"

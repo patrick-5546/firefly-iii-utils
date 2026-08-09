@@ -150,6 +150,11 @@ uv run firefly-iii-import-data path/to/transactions/
 uv run firefly-iii-import-data --dry-run path/to/transactions/
 ```
 
+Before a dry run or upload, every CSV column assigned a date role is
+validated against the template's `date` format. A changed bank export
+format, blank date, or invalid date stops the import locally instead of
+allowing the Data Importer to substitute today's date.
+
 Auto-detection iterates the templates registered in
 `src/firefly_iii_utils/paths.py`'s `TEMPLATES` dict and, for each one
 that has a `filename_pattern` or `csv_column_header` set on its

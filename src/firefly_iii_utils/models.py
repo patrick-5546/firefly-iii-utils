@@ -125,6 +125,7 @@ AutocompleteCategoryListAdapter: TypeAdapter[list[AutocompleteCategoryEntry]] = 
 
 
 class ImporterTemplate(BaseModel):
+    date: str
     default_account: int = Field(ge=1)
     custom_tag: str
     roles: list[str]
