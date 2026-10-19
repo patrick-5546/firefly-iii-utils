@@ -88,6 +88,8 @@ def _validate_csv_dates(csv_bytes: bytes, roles: list[str], date_format: str) ->
             raise ValueError("CSV is empty (no header row).") from exc
         validated = 0
         for row_number, row in enumerate(reader, start=2):
+            if not row:
+                continue
             for column_index, role in date_columns:
                 column_name = (
                     header[column_index]
