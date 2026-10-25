@@ -336,7 +336,7 @@ uv run firefly-iii-find-unmatched-transfers 2026-06 > unmatched.csv
 # Carry a previous review forward: re-run with --reviewed pointed at
 # the saved output (after deleting any rows you still want to
 # re-investigate); any row whose transaction_id is in that file is
-# stripped from the new output.
+# excluded from both the matching and the new output.
 uv run firefly-iii-find-unmatched-transfers --reviewed unmatched.csv 2026-01 2026-06 > unmatched_v2.csv
 ```
 
@@ -353,6 +353,12 @@ Transactions of any other type (`transfer`, `reconciliation`,
 them atomically and they don't need a counterpart. As with
 `firefly-iii-guess-categories`, the script errors out if any
 transaction in the category has more than one split.
+
+With `--reviewed`, the listed transactions never enter the matching,
+so they can't pair with (and hide) an unreviewed transaction of the
+same amount. If a reviewed transaction's counterpart is imported
+later, that counterpart is reported as unmatched; add it to the
+reviewed file too, or delete the reviewed row so the two pair off.
 
 ### `firefly-iii-monthly-category-spend`
 

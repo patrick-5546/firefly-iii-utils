@@ -16,7 +16,9 @@ in date order (earliest first); whatever's left over is unmatched.
 Anything that isn't a withdrawal or deposit (``transfer``,
 ``reconciliation``, ``opening balance``) is treated as already
 two-sided and excluded from both the matching and the unmatched
-CSV.
+CSV. Transactions listed in ``--reviewed`` are excluded the same
+way, so a reviewed transaction can never pair with (and hide) an
+unreviewed one of the same amount.
 
 The CSV is sorted by ``(date, signed_amount)`` — where ``+amount``
 is a deposit and ``-amount`` a withdrawal — and emitted colored on a
@@ -284,7 +286,7 @@ def _read_reviewed(
 
     Duplicate ``transaction_id`` values inside the file emit a stderr
     warning but are deduped into a single membership entry, since a
-    set is what the strip step needs anyway.
+    set is what the exclusion step needs anyway.
     """
     try:
         text = path.read_text(encoding="utf-8")
@@ -366,11 +368,10 @@ def main() -> None:
         default=None,
         help=(
             "Path to a CSV produced by a previous run of this script. Any row whose "
-            "transaction_id is in that file is stripped from the unmatched output. The "
-            "header must match the script's own output exactly; stripping happens after "
-            "pairing, so a previously-orphan transaction that now has a counterpart "
-            "pairs off as normal and never reaches the strip step. Reviewed ids that "
-            "aren't in the current unmatched output emit a one-line stderr note."
+            "transaction_id is in that file is excluded before pairing, from both "
+            "matched pairs and unmatched output. The header must match the script's "
+            "own output exactly. Reviewed ids that aren't among the fetched withdrawals "
+            "or deposits emit a one-line stderr note."
         ),
     )
     _ = parser.add_argument(
@@ -402,6 +403,14 @@ def main() -> None:
 
     console = Console(stderr=True, no_color=args.no_color)
 
+    reviewed_ids: set[str] = set()
+    if args.reviewed is not None:
+        reviewed_ids = _read_reviewed(Path(args.reviewed), parser, console)
+        console.print(
+            f"Loaded {len(reviewed_ids)} reviewed transaction id(s) from {args.reviewed!r}.",
+            highlight=False,
+        )
+
     console.print(
         f"Looking up category id for {CATEGORY_NAME!r}\u2026",
         highlight=False,
@@ -429,34 +438,32 @@ def main() -> None:
         console=console,
     )
 
+    if args.reviewed is not None:
+        current_ids = {row.transaction_journal_id for row in withdrawals} | {
+            row.transaction_journal_id for row in deposits
+        }
+        for stale in sorted(reviewed_ids - current_ids):
+            console.print(
+                f"reviewed id {stale!r} not found among fetched withdrawals or deposits",
+                style="yellow",
+                highlight=False,
+            )
+        before = len(withdrawals) + len(deposits)
+        withdrawals = [row for row in withdrawals if row.transaction_journal_id not in reviewed_ids]
+        deposits = [row for row in deposits if row.transaction_journal_id not in reviewed_ids]
+        remaining = len(withdrawals) + len(deposits)
+        console.print(
+            f"Excluded {before - remaining} reviewed transaction(s) before pairing; "
+            + f"{remaining} remaining.",
+            highlight=False,
+        )
+
     matched, unmatched = _match(withdrawals, deposits)
     console.print(
         f"Matched {len(matched)} pair(s); {len(unmatched)} unmatched transaction(s).",
         highlight=False,
     )
     _print_matched(matched, console)
-
-    if args.reviewed is not None:
-        reviewed_ids = _read_reviewed(Path(args.reviewed), parser, console)
-        console.print(
-            f"\nLoaded {len(reviewed_ids)} reviewed transaction id(s) from "
-            + f"{args.reviewed!r}.",
-            highlight=False,
-        )
-        current_ids = {row.transaction_journal_id for row in unmatched}
-        for stale in sorted(reviewed_ids - current_ids):
-            console.print(
-                f"reviewed id {stale!r} no longer in unmatched output",
-                style="yellow",
-                highlight=False,
-            )
-        before = len(unmatched)
-        unmatched = [row for row in unmatched if row.transaction_journal_id not in reviewed_ids]
-        console.print(
-            f"Stripped {before - len(unmatched)} reviewed row(s); "
-            + f"{len(unmatched)} remaining.",
-            highlight=False,
-        )
 
     unmatched.sort(key=_sort_key)
     balance = _signed_balance(unmatched).quantize(Decimal("0.01"))
