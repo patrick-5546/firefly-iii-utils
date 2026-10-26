@@ -1,5 +1,17 @@
 import csv
 import io
+from decimal import Decimal
+
+from .parsing import parse_amount
+
+_PAYPAL_REQUIRED_COLUMNS = ("Name", "Type", "Status", "Currency", "Total", "Balance")
+_PAYPAL_HOLD_TYPES = frozenset(
+    {
+        "Account Hold for Open Authorization",
+        "Reversal of General Account Hold",
+    }
+)
+_PAYPAL_SAVINGS_TYPE = "General GI/Open wallet Transaction"
 
 
 def _merge_credit_into_debit(csv_bytes: bytes, *, negate: bool) -> tuple[bytes, str]:
@@ -81,6 +93,95 @@ def preprocess_wf_acct(csv_bytes: bytes) -> tuple[bytes, str]:
     """
     csv_bytes, removed = _drop_rows_where_column_equals(csv_bytes, column="Type", value="Transfer")
     return csv_bytes, f"removed {removed} transfer row(s)"
+
+
+def preprocess_paypal_acct(csv_bytes: bytes) -> tuple[bytes, str]:
+    """Keep only real money movement from a PayPal "Balance affecting" export.
+
+    PayPal's activity downloads share one header, but only the "Balance
+    affecting" report reconciles row by row (previous ``Balance`` plus
+    ``Total`` equals ``Balance``); the others add authorization rows that
+    move no money, so any file that fails this check is refused. Debit
+    card hold / hold-reversal pairs are dropped because the settled card
+    transaction carries the real amount, and ``General GI/Open wallet
+    Transaction`` rows are dropped because they move money between the
+    PayPal balance and PayPal Savings. Non-USD rows cause the upload to
+    be refused. ``Pending`` rows are kept because PayPal leaves some
+    instantly credited bank deposits Pending indefinitely and the balance
+    check proves they moved money. Blank ``Name`` cells (e.g. bank
+    deposits) are filled from ``Type`` so the imported description isn't
+    empty.
+    """
+    text = csv_bytes.decode("utf-8-sig")
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        raise ValueError("CSV is empty (no header row).")
+    header = rows[0]
+    missing = [column for column in _PAYPAL_REQUIRED_COLUMNS if column not in header]
+    if missing:
+        raise ValueError(
+            f"CSV header missing required column(s) {missing!r}. Header was: {header!r}"
+        )
+    index = {column: header.index(column) for column in _PAYPAL_REQUIRED_COLUMNS}
+
+    kept: list[list[str]] = [header]
+    previous_balance: Decimal | None = None
+    verified = holds = savings = pending = filled = 0
+    for row_number, row in enumerate(rows[1:], start=2):
+        if not any(cell.strip() for cell in row):
+            continue
+        if len(row) != len(header):
+            raise ValueError(
+                f"Row {row_number} has {len(row)} column(s) but the header has {len(header)}."
+            )
+        currency = row[index["Currency"]].strip()
+        if currency != "USD":
+            raise ValueError(f"Row {row_number} has Currency {currency!r}; only USD is supported.")
+        total = _parse_paypal_amount(row[index["Total"]], row_number=row_number, column="Total")
+        balance = _parse_paypal_amount(
+            row[index["Balance"]], row_number=row_number, column="Balance"
+        )
+        if previous_balance is not None:
+            if previous_balance + total != balance:
+                raise ValueError(
+                    f"Row {row_number}: previous Balance {previous_balance} + Total {total} "
+                    + f"does not equal Balance {balance}. Only PayPal's 'Balance affecting' "
+                    + "activity download reconciles row by row; re-download it with "
+                    + "Transaction type set to 'Balance affecting'."
+                )
+            verified += 1
+        previous_balance = balance
+
+        transaction_type = row[index["Type"]].strip()
+        if transaction_type in _PAYPAL_HOLD_TYPES:
+            holds += 1
+            continue
+        if transaction_type == _PAYPAL_SAVINGS_TYPE:
+            savings += 1
+            continue
+        if row[index["Status"]].strip() == "Pending":
+            pending += 1
+        if not row[index["Name"]].strip():
+            row[index["Name"]] = transaction_type
+            filled += 1
+        kept.append(row)
+
+    out = io.StringIO(newline="")
+    writer = csv.writer(out)
+    writer.writerows(kept)
+    summary = (
+        f"verified running balance on {verified} row(s); dropped {holds} hold/reversal and "
+        + f"{savings} GI/Open wallet row(s); kept {pending} Pending row(s); "
+        + f"filled {filled} blank Name(s) from Type"
+    )
+    return out.getvalue().encode("utf-8"), summary
+
+
+def _parse_paypal_amount(value: str, *, row_number: int, column: str) -> Decimal:
+    try:
+        return parse_amount(value.strip().replace(",", ""))
+    except ValueError as exc:
+        raise ValueError(f"Row {row_number} has unparseable {column} {value!r}.") from exc
 
 
 def _drop_rows_where_column_equals(

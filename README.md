@@ -227,6 +227,23 @@ Currently registered:
   `Debit`, so the preprocessor moves each `Credit` value into `Debit`
   **as-is** (Citi already minus-prefixed it). As with `cap1_cc`, rows
   with both columns populated cause the upload to be refused.
+- **`paypal_acct`** — Download PayPal activity as CSV with **Transaction
+  type: Balance affecting**. The other reports ("All transactions",
+  "Completed payments") share its header but add authorization rows that
+  move no money, so the preprocessor refuses any file whose rows don't
+  reconcile (previous `Balance` + `Total` = `Balance`). It also refuses
+  non-USD rows. It drops debit card hold / hold-reversal pairs (the
+  settled card transaction carries the amount) and `General GI/Open
+  wallet Transaction` rows (moves between the PayPal balance and PayPal
+  Savings), and fills blank `Name` cells (e.g. bank deposits) from
+  `Type`. `Pending` rows are kept: PayPal leaves some instantly credited
+  bank deposits `Pending` indefinitely, and the balance check proves
+  they moved money. The Firefly III account
+  therefore tracks PayPal's balance plus pending holds plus PayPal
+  Savings. `Transaction ID` is imported as the external identifier so
+  identical same-day purchases aren't skipped as duplicates. PayPal's
+  filename (`Download.CSV`, `Download (3).CSV`, ...) has no account
+  identifier, so its `account_mappings.json` lookup key is `Download`.
 
 To add a new bank, drop its JSON template into `configs/`, register
 it in the `TEMPLATES` dict in `src/firefly_iii_utils/paths.py` (the

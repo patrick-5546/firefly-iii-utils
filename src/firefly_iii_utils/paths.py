@@ -1,7 +1,12 @@
 from pathlib import Path
 
 from .models import TemplateInfo
-from .preprocessors import preprocess_cap1_cc, preprocess_citi_cc, preprocess_wf_acct
+from .preprocessors import (
+    preprocess_cap1_cc,
+    preprocess_citi_cc,
+    preprocess_paypal_acct,
+    preprocess_wf_acct,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIGS_DIR = REPO_ROOT / "configs"
@@ -34,5 +39,10 @@ TEMPLATES: dict[str, TemplateInfo] = {
     "bilt_cc": TemplateInfo(
         path=CONFIGS_DIR / "bilt_cc.json",
         filename_pattern=r"^(transactions)-\d{4}-\d{2}-\d{2}\.csv$",
+    ),
+    "paypal_acct": TemplateInfo(
+        path=CONFIGS_DIR / "paypal_acct.json",
+        filename_pattern=r"^(Download)(?: ?\(\d+\))?\.(?i:csv)$",
+        preprocessor=preprocess_paypal_acct,
     ),
 }
